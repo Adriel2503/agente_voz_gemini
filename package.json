@@ -1,0 +1,21 @@
+{
+  "name": "aiyou-agente-voz-gateway",
+  "version": "0.1.0",
+  "description": "Gateway/facade del Agente de Voz AiYou. Expone la API externa (agente.ai-you.io) frente a Ultravox.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "axios": "^1.11.0",
+    "dotenv": "^17.3.1",
+    "express": "^5.1.0",
+    "pg": "^8.20.0",
+    "ws": "^8.18.0"
+  }
+}
