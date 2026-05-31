@@ -5,6 +5,7 @@ const ctrl = require("../controllers/sesiones.controller.js");
 const router = Router();
 
 // Todas requieren token aiyou_live_ (Bearer). Ver seccion 5 del HTML.
+router.get("/voces", apiVozTokenAuth, ctrl.listarVoces);
 router.post("/sesiones", apiVozTokenAuth, ctrl.crearSesion);
 router.get("/sesiones/:id", apiVozTokenAuth, ctrl.estadoSesion);
 router.post("/sesiones/:id/terminar", apiVozTokenAuth, ctrl.terminarSesion);

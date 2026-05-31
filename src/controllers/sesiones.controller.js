@@ -81,7 +81,7 @@ async function crearSesion(req, res) {
       sampleRate,
       metadata,
       tipificaciones,
-      toolRuta,
+      idTool: idToolFinal,
       webhook: webhook ? { webhookUrl: webhook.webhook_url, webhookSecret: webhook.webhook_secret } : null,
     });
 
@@ -154,4 +154,29 @@ async function transcripcionSesion(req, res) {
   });
 }
 
-module.exports = { crearSesion, estadoSesion, terminarSesion, transcripcionSesion };
+// GET /v1/agente-voz/voces  (diagnostico)
+// Lista las voces de la cuenta Ultravox de la empresa del token. Sirve para saber
+// que voice_code poblar en la tabla `voz` o en DEFAULT_VOICE_CODE.
+async function listarVoces(req, res) {
+  const agente = new AgenteVozModel();
+  try {
+    const empresa = await agente.getEmpresa(req.apiVozEmpresa);
+    if (!empresa) return err(res, 401, "auth_invalida", "Empresa no encontrada");
+    if (!empresa.ultravox_api_key) return err(res, 503, "agente_indisponible", "Empresa sin ultravox_api_key");
+
+    const voces = await ultravox.listarVoces(empresa.ultravox_api_key);
+    return res.json({
+      total: voces.length,
+      voces: voces.map((v) => ({
+        voice_code: v.voiceId ?? v.id ?? v.voice_id ?? null,
+        nombre: v.name ?? null,
+        idioma: v.language ?? v.languageCode ?? null,
+      })),
+    });
+  } catch (error) {
+    logger.error(`[listarVoces] ${error.message}`);
+    return err(res, 502, "error_ultravox", "No se pudieron listar las voces");
+  }
+}
+
+module.exports = { crearSesion, estadoSesion, terminarSesion, transcripcionSesion, listarVoces };

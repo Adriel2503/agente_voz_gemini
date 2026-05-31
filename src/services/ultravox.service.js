@@ -77,6 +77,30 @@ async function sendDataMessage(apiKey, callId, { type = "user_text_message", tex
   }
 }
 
+// GET /api/voices — voces disponibles en la cuenta Ultravox de la empresa.
+// Diagnostico: para saber que voice_code poblar en la tabla `voz` / DEFAULT_VOICE_CODE.
+async function listarVoces(apiKey) {
+  if (!apiKey) throw new Error("Falta ultravox_api_key de la empresa");
+  const all = [];
+  let nextUrl = `${baseUrl}/voices`;
+  while (nextUrl) {
+    const resp = await axios.get(nextUrl, {
+      headers: { "X-API-Key": apiKey, Accept: "application/json" },
+      timeout: timeoutMs,
+      validateStatus: () => true,
+    });
+    if (resp.status !== 200) {
+      const detalle = typeof resp.data === "object" ? JSON.stringify(resp.data) : String(resp.data);
+      throw new Error(`Ultravox GET voices ${resp.status}: ${detalle}`);
+    }
+    const data = resp.data || {};
+    if (Array.isArray(data.results)) all.push(...data.results);
+    else if (Array.isArray(data)) all.push(...data);
+    nextUrl = data.next || null;
+  }
+  return all;
+}
+
 async function getCall(apiKey, callId) {
   const resp = await axios.get(`${baseUrl}/calls/${callId}`, {
     headers: { "X-API-Key": apiKey, Accept: "application/json" },
@@ -111,4 +135,4 @@ async function obtenerMensajes(apiKey, callId) {
   return { estado: "ERROR_DESCONOCIDO", mensajes: [] };
 }
 
-module.exports = { crearLlamadaServerWs, sendDataMessage, getCall, obtenerMensajes };
+module.exports = { crearLlamadaServerWs, sendDataMessage, listarVoces, getCall, obtenerMensajes };
