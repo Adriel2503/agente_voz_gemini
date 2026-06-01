@@ -137,6 +137,17 @@ async function crearSesion(req, res) {
     });
   } catch (error) {
     logger.error(`[crearSesion] ${error.message}`);
+    const fallo = ultravox.clasificarError(error);
+    if (fallo === "caido") {
+      // Ultravox no disponible. El gateway no tiene proveedor de respaldo, asi
+      // que pide al integrador reintentar (503 + Retry-After).
+      res.set("Retry-After", "30");
+      return err(res, 503, "agente_indisponible", "El agente de voz no esta disponible temporalmente. Reintente en unos segundos.");
+    }
+    if (fallo === "rechazado") {
+      // Ultravox rechazo la solicitud (4xx): reintentar no ayuda.
+      return err(res, 502, "error_ultravox", "El agente de voz rechazo la solicitud. Verifique los parametros (voz, plantilla).");
+    }
     return err(res, 500, "error_interno", "No se pudo crear la sesion");
   }
 }

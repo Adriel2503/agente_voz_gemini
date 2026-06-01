@@ -63,6 +63,25 @@ async function crearLlamadaServerWs({
   return { callId, joinUrl };
 }
 
+// Clasifica un error capturado al hablar con Ultravox para decidir el HTTP que
+// devuelve el gateway. El gateway es un facade sin proveedor de respaldo, asi
+// que distinguimos:
+//   "caido"     -> Ultravox no disponible (red/timeout/5xx/respuesta invalida).
+//                  El gateway responde 503 (reintentable).
+//   "rechazado" -> Ultravox respondio 4xx (la solicitud era invalida, ej. voz
+//                  inexistente). No es una caida: reintentar no ayuda -> 502.
+//   null        -> error no atribuible a Ultravox (bug interno) -> 500.
+function clasificarError(error) {
+  const msg = String(error?.message || "");
+  const m = msg.match(/^Ultravox respondio (\d{3})/);
+  if (m) return Number(m[1]) >= 500 ? "caido" : "rechazado";
+  if (/no devolvio joinUrl/.test(msg)) return "caido";
+  const code = String(error?.code || "");
+  if (["ECONNREFUSED", "ECONNABORTED", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "ECONNRESET"].includes(code)) return "caido";
+  if (/timeout|network|socket hang up/i.test(msg)) return "caido";
+  return null;
+}
+
 // POST /api/calls/{id}/send_data_message — inyecta texto en la llamada activa
 // (ej. avisar "el usuario colgó, tipifica y cuelga"). Ver external-media:1077.
 async function sendDataMessage(apiKey, callId, { type = "user_text_message", text, urgency = "now" }) {
@@ -135,4 +154,4 @@ async function obtenerMensajes(apiKey, callId) {
   return { estado: "ERROR_DESCONOCIDO", mensajes: [] };
 }
 
-module.exports = { crearLlamadaServerWs, sendDataMessage, listarVoces, getCall, obtenerMensajes };
+module.exports = { crearLlamadaServerWs, sendDataMessage, listarVoces, getCall, obtenerMensajes, clasificarError };
