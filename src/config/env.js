@@ -12,6 +12,12 @@ const env = {
   // Si se setea, processTools reescribe los hosts ai-you.io de las tools a esta URL.
   // null = dejar las URLs de las tools genéricas tal cual (app-api.ai-you.io).
   toolsBackendUrl: process.env.TOOLS_BACKEND_URL || null,
+  feriados: {
+    // CRM que sirve GET /api/feriados/proximos?dias=N (mismo que usa el voice-backend).
+    crmUrl: process.env.CRM_FERIADOS_URL || "https://app-api.ai-you.io",
+    cacheTtlMs: parseInt(process.env.FERIADOS_CACHE_TTL_MS, 10) || 10 * 60 * 1000,
+    diasAdelante: parseInt(process.env.FERIADOS_DIAS_ADELANTE, 10) || 60,
+  },
 };
 
 module.exports = env;

@@ -3,7 +3,7 @@ const ApiVozModel = require("../models/apiVoz.model.js");
 const ultravox = require("../services/ultravox.service.js");
 const { enviarWebhook } = require("../services/webhook.service.js");
 const store = require("../sessions/store.js");
-const { renderPrompt } = require("../lib/prompt.js");
+const { renderPromptConFeriados } = require("../lib/prompt.js");
 const { processTools } = require("../tools/processTools.js");
 const genericaTools = require("../tools/generica.js");
 const env = require("../config/env.js");
@@ -49,11 +49,26 @@ async function crearSesion(req, res) {
     }
 
     const tipificaciones = await agente.getTipificaciones(idEmpresa);
-    const systemPrompt = renderPrompt(plantilla.prompt || plantilla.prompt_resultado, variables);
-    const sampleRate = codec === "mulaw_8k" ? 8000 : 16000;
 
     // provider_call_id para las tools: el call_id del integrador si lo manda.
     const providerCallId = metadata?.external_call_id ?? null;
+
+    // Enriquecer variables con los reservados que la plantilla espera pre-cargados
+    // (replica aiyou-voice-backend ultravoxapi.service.js):
+    //  - nombre_corto: primer nombre en minuscula, auto-derivado de nombre.
+    //  - tipificaciones: catalogo JSON que el agente lee para tipificarLlamada.
+    //  - provider_call_id: el call_id del integrador (las tools lo reciben aparte
+    //    via processTools, pero la plantilla tambien lo referencia en texto).
+    const varsPrompt = { ...variables };
+    const rawNombre = String(variables.nombre || variables.nombre_completo || "").trim();
+    if (rawNombre && !varsPrompt.nombre_corto) {
+      varsPrompt.nombre_corto = rawNombre.split(/\s+/)[0].toLowerCase();
+    }
+    varsPrompt.tipificaciones = JSON.stringify(tipificaciones || []);
+    if (providerCallId) varsPrompt.provider_call_id = providerCallId;
+
+    const systemPrompt = await renderPromptConFeriados(plantilla.prompt || plantilla.prompt_resultado, varsPrompt);
+    const sampleRate = codec === "mulaw_8k" ? 8000 : 16000;
     const selectedTools = processTools(genericaTools, {
       idEmpresa,
       providerCallId,
