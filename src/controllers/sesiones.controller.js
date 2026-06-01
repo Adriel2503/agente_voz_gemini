@@ -5,6 +5,7 @@ const { enviarWebhook } = require("../services/webhook.service.js");
 const store = require("../sessions/store.js");
 const { renderPromptConFeriados } = require("../lib/prompt.js");
 const { processTools } = require("../tools/processTools.js");
+const { cargarTiendas } = require("../services/sucursales.service.js");
 const genericaTools = require("../tools/generica.js");
 const env = require("../config/env.js");
 const logger = require("../config/logger.js");
@@ -67,7 +68,16 @@ async function crearSesion(req, res) {
     varsPrompt.tipificaciones = JSON.stringify(tipificaciones || []);
     if (providerCallId) varsPrompt.provider_call_id = providerCallId;
 
-    const systemPrompt = await renderPromptConFeriados(plantilla.prompt || plantilla.prompt_resultado, varsPrompt);
+    const promptPlantilla = plantilla.prompt || plantilla.prompt_resultado || "";
+
+    // Precarga de las 3 tiendas mas cercanas (solo si la plantilla las usa), para
+    // que el agente ofrezca agencia sin llamar buscarSucursal al inicio.
+    if (promptPlantilla.includes("tienda_cercana")) {
+      const tiendas = await cargarTiendas(idEmpresa, variables);
+      Object.assign(varsPrompt, tiendas);
+    }
+
+    const systemPrompt = await renderPromptConFeriados(promptPlantilla, varsPrompt);
     const sampleRate = codec === "mulaw_8k" ? 8000 : 16000;
     const selectedTools = processTools(genericaTools, {
       idEmpresa,

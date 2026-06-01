@@ -18,6 +18,12 @@ const env = {
     cacheTtlMs: parseInt(process.env.FERIADOS_CACHE_TTL_MS, 10) || 10 * 60 * 1000,
     diasAdelante: parseInt(process.env.FERIADOS_DIAS_ADELANTE, 10) || 60,
   },
+  sucursales: {
+    // CRM que sirve POST /api/crm/tools/llamadas/buscarSucursal (mismo endpoint
+    // que usa la tool buscarSucursal). Precarga las 3 tiendas mas cercanas.
+    baseUrl: process.env.CRM_SUCURSALES_URL || "https://app-api.ai-you.io",
+    timeoutMs: parseInt(process.env.SUCURSALES_TIMEOUT_MS, 10) || 8000,
+  },
 };
 
 module.exports = env;
