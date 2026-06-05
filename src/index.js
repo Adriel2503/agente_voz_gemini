@@ -46,7 +46,12 @@ server.on("upgrade", async (req, socket, head) => {
       return socket.destroy();
     }
 
-    wss.handleUpgrade(req, socket, head, (ws) => manejarConexion(ws, sesion));
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      // noServer + handleUpgrade NO emite "connection" solo: hay que emitirlo a
+      // mano para que se enganchen isAlive y el listener de pong (heartbeat).
+      wss.emit("connection", ws, req);
+      manejarConexion(ws, sesion);
+    });
   } catch (error) {
     logger.error(`[upgrade] ${error.message}`);
     socket.destroy();
