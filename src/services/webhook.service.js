@@ -4,11 +4,9 @@ const crypto = require("crypto");
 const axios = require("axios");
 const logger = require("../config/logger.js");
 
-function firmar(secret, timestamp, body) {
-  return crypto
-    .createHmac("sha256", secret)
-    .update(`${timestamp}.${JSON.stringify(body)}`)
-    .digest("hex");
+// Firma sobre el body crudo (sin timestamp). El header lleva el hex pelado.
+function firmar(secret, rawBody) {
+  return crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
 }
 
 // event: session.created | session.connected | session.tipificacion |
@@ -17,6 +15,8 @@ async function enviarWebhook({ webhookUrl, webhookSecret }, event, payload) {
   if (!webhookUrl) return; // empresa sin webhook configurado
   const timestamp = Math.floor(Date.now() / 1000);
   const body = { event, ...payload, ts: timestamp };
+  // Serializamos nosotros para que la firma cubra exactamente el byte-string enviado.
+  const rawBody = JSON.stringify(body);
 
   const headers = {
     "Content-Type": "application/json",
@@ -24,11 +24,11 @@ async function enviarWebhook({ webhookUrl, webhookSecret }, event, payload) {
     "X-AiYou-Timestamp": String(timestamp),
   };
   if (webhookSecret) {
-    headers["X-AiYou-Signature"] = `t=${timestamp},v1=${firmar(webhookSecret, timestamp, body)}`;
+    headers["X-AiYou-Signature"] = firmar(webhookSecret, rawBody);
   }
 
   try {
-    await axios.post(webhookUrl, body, { headers, timeout: 8000, validateStatus: () => true });
+    await axios.post(webhookUrl, rawBody, { headers, timeout: 8000, validateStatus: () => true });
   } catch (error) {
     // No reventar la sesion por un webhook fallido; el integrador puede reintentar via GET.
     logger.warn(`[webhook] fallo ${event} -> ${webhookUrl}: ${error.message}`);
