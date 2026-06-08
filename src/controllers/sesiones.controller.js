@@ -36,7 +36,7 @@ async function crearSesion(req, res) {
     // Voz: del body o default por env. (TODO: decidir si la voz vive en la plantilla/empresa.)
     let voiceCode = env.defaultVoiceCode;
     if (id_voz) {
-      const voz = await agente.getVoz(id_voz);
+      const voz = await agente.getVoz(id_voz, idEmpresa);
       if (!voz) return err(res, 400, "voz_invalida", "id_voz inexistente o inactiva");
       voiceCode = voz.voice_code;
     }

@@ -16,6 +16,7 @@ const store = require("../sessions/store.js");
 const logger = require("../config/logger.js");
 
 function manejarConexion(asteriskWs, sesion) {
+  const iniciadoEn = Date.now();
   store.actualizar(sesion.session_id, { conectado: true, estado: "conectada" });
 
   const ultravoxWs = new WebSocket(sesion.joinUrl);
@@ -42,7 +43,8 @@ function manejarConexion(asteriskWs, sesion) {
   const cerrar = (motivo) => {
     if (cerrado) return;
     cerrado = true;
-    store.actualizar(sesion.session_id, { estado: "finalizada" });
+    const duracionSegundos = Math.max(0, Math.round((Date.now() - iniciadoEn) / 1000));
+    store.actualizar(sesion.session_id, { estado: "finalizada", duracionSegundos });
     try { asteriskWs.close(); } catch (_) {}
     try { ultravoxWs.close(); } catch (_) {}
 
@@ -51,6 +53,7 @@ function manejarConexion(asteriskWs, sesion) {
         session_id: sesion.session_id,
         estado: "ended",
         motivo_fin: motivo,
+        duracion_segundos: duracionSegundos,
         fecha_fin: new Date().toISOString(),
       })
       .catch((e) => logger.error(`[bridge] upsert ended: ${e.message}`));
@@ -59,7 +62,7 @@ function manejarConexion(asteriskWs, sesion) {
       enviarWebhook(sesion.webhook, "session.ended", {
         session_id: sesion.session_id,
         metadata: sesion.metadata,
-        resumen: { duracion_segundos: sesion.duracionSegundos || 0, tipificacion: sesion.tipificacionFinal || null },
+        resumen: { duracion_segundos: duracionSegundos, tipificacion: sesion.tipificacionFinal || null },
       });
     }
     store.eliminar(sesion.session_id);

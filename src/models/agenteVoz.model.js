@@ -40,11 +40,13 @@ class AgenteVozModel {
     return rows;
   }
 
-  // voz -> voice_code de Ultravox (catalogo global, sin id_empresa).
-  async getVoz(idVoz) {
+  // voz -> voice_code de Ultravox. La empresa solo puede usar voces globales
+  // (id_empresa NULL) o las suyas propias.
+  async getVoz(idVoz, idEmpresa = null) {
     const [rows] = await this.connection.execute(
-      `SELECT id, voice_code FROM voz WHERE id = ? AND estado_registro = 1`,
-      [idVoz]
+      `SELECT id, voice_code FROM voz
+       WHERE id = ? AND estado_registro = 1 AND (id_empresa IS NULL OR id_empresa = ?)`,
+      [idVoz, idEmpresa ?? null]
     );
     return rows[0] || null;
   }
