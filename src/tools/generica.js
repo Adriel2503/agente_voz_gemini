@@ -96,6 +96,64 @@ const genericaTools = [
       ],
     },
   },
+  {
+    temporaryTool: {
+      modelToolName: "agendar_cita_target",
+      description:
+        "Registra la cita confirmada por el cliente en la tabla agendamiento_llamada. Llamar SOLO cuando el cliente confirmó explícitamente fecha, hora y tienda. Recibe: tienda (display name hablado al cliente, ej. 'CARSA Ate Porvenir'), agencia (nombre crudo de la sucursal del JSON de buscarSucursal o de la pre-cargada, ej. 'CARSA_ATE PORVENIR' — sirve para cruce con tabla brand), fecha en formato YYYY-MM-DD (ej. '2026-05-09') y hora en formato 24h HH:MM:SS (ej. '15:30:00'). El provider_call_id es el id de la llamada actual.",
+      timeout: "5s",
+      http: {
+        baseUrlPattern: "https://app-api.ai-you.io/api/crm/tools/llamadas/agendarCitaTarget",
+        httpMethod: "POST",
+      },
+      dynamicParameters: [
+        {
+          name: "provider_call_id",
+          location: "PARAMETER_LOCATION_BODY",
+          schema: { type: "string", description: "ID de la llamada actual (provider_call_id de la sesión)" },
+          required: true,
+        },
+        {
+          name: "tienda",
+          location: "PARAMETER_LOCATION_BODY",
+          schema: {
+            type: "string",
+            description:
+              "Display name hablado de la tienda donde el cliente acudirá (ej: 'CARSA Ate Porvenir', 'Gallo Más Gallo Villa El Salvador'). Es el nombre tal cual se le dijo al cliente, sin anteponer 'tienda'.",
+          },
+          required: true,
+        },
+        {
+          name: "agencia",
+          location: "PARAMETER_LOCATION_BODY",
+          schema: {
+            type: "string",
+            description:
+              "Nombre RAW (crudo) de la sucursal tal cual viene en el JSON de buscarSucursal o en la variable pre-cargada {{tienda_cercana}}. Ejemplos: 'CARSA_ATE PORVENIR', 'GMG_VES', 'MOTO GO_CUSCO', 'MARCIMEX_TRUJILLO'. NO modifiques este valor — pásalo tal cual del backend para que cruce con la tabla de brand.",
+          },
+          required: true,
+        },
+        {
+          name: "fecha",
+          location: "PARAMETER_LOCATION_BODY",
+          schema: {
+            type: "string",
+            description: "Fecha de la cita en formato YYYY-MM-DD (ej: '2026-05-09'). Convierte cualquier expresión natural ('mañana', 'el jueves') a este formato antes de llamar.",
+          },
+          required: true,
+        },
+        {
+          name: "hora",
+          location: "PARAMETER_LOCATION_BODY",
+          schema: {
+            type: "string",
+            description: "Hora de la cita en formato 24h HH:MM:SS (ej: '15:30:00' para 3:30 de la tarde, '09:00:00' para 9 de la mañana). Si solo tienes HH:MM, agrega ':00' al final.",
+          },
+          required: true,
+        },
+      ],
+    },
+  },
 ];
 
 module.exports = genericaTools;

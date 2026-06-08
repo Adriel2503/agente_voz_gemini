@@ -94,6 +94,7 @@ function manejarConexion(asteriskWs, sesion) {
     switch (msg.type) {
       case "transcript": {
         const rol = (msg.role === "agent" || /AGENT/i.test(msg.role)) ? "agente" : "usuario";
+        if (msg.final) logger.info(`[bridge] transcript final sesion=${sesion.session_id} rol=${rol} texto="${msg.text}"`);
         enviarAsterisk(
           msg.final
             ? { type: "transcript_final", rol, texto: msg.text, ts: msg.timespan?.start }
@@ -115,6 +116,7 @@ function manejarConexion(asteriskWs, sesion) {
         break;
       case "toolUsed":
       case "tool":
+        logger.info(`[bridge] tool del agente sesion=${sesion.session_id} name=${msg.toolName || msg.name} args=${JSON.stringify(msg.parameters || msg.args || {})}`);
         enviarAsterisk({ type: "tool_call", name: msg.toolName || msg.name, args: msg.parameters || msg.args });
         if (sesion.webhook) {
           enviarWebhook(sesion.webhook, "session.tool_call", {
