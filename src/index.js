@@ -47,6 +47,8 @@ server.on("upgrade", async (req, socket, head) => {
     }
 
     wss.handleUpgrade(req, socket, head, (ws) => {
+      ws._sesionId = sessionId;
+      logger.info(`[upgrade] WS conectado sesion=${sessionId} empresa=${idEmpresa}`);
       // noServer + handleUpgrade NO emite "connection" solo: hay que emitirlo a
       // mano para que se enganchen isAlive y el listener de pong (heartbeat).
       wss.emit("connection", ws, req);
@@ -61,14 +63,22 @@ server.on("upgrade", async (req, socket, head) => {
 // Heartbeat a nivel WS: Traefik/EasyPanel cortan conexiones idle. Mantener vivo.
 const interval = setInterval(() => {
   for (const ws of wss.clients) {
-    if (ws.isAlive === false) { ws.terminate(); continue; }
+    if (ws.isAlive === false) {
+      logger.warn(`[heartbeat] terminando WS sin actividad (${ws._sesionId || "?"})`);
+      ws.terminate();
+      continue;
+    }
     ws.isAlive = false;
     try { ws.ping(); } catch (_) {}
   }
 }, 25000);
 wss.on("connection", (ws) => {
   ws.isAlive = true;
-  ws.on("pong", () => { ws.isAlive = true; });
+  ws.on("pong", () => { ws.isAlive = true; logger.debug("[heartbeat] pong recibido"); });
+  // Cualquier frame entrante (audio o control) tambien cuenta como vivo: algunos
+  // clientes WS no responden el ping/pong de protocolo, asi que no dependemos solo
+  // del pong para no matar una llamada con audio fluyendo.
+  ws.on("message", () => { ws.isAlive = true; });
 });
 wss.on("close", () => clearInterval(interval));
 

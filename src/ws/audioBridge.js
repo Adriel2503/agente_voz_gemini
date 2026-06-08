@@ -26,7 +26,10 @@ function manejarConexion(asteriskWs, sesion) {
   let hangupAvisado = false;
 
   const enviarAsterisk = (obj) => {
-    if (asteriskWs.readyState === WebSocket.OPEN) asteriskWs.send(JSON.stringify(obj));
+    if (asteriskWs.readyState === WebSocket.OPEN) {
+      asteriskWs.isAlive = true; // pumpear audio/datos hacia el cliente = sigue viva
+      asteriskWs.send(JSON.stringify(obj));
+    }
   };
 
   // Pide a Ultravox que tipifique y cuelgue cuando el caller corta (external-media:1077).
@@ -44,6 +47,7 @@ function manejarConexion(asteriskWs, sesion) {
     if (cerrado) return;
     cerrado = true;
     const duracionSegundos = Math.max(0, Math.round((Date.now() - iniciadoEn) / 1000));
+    logger.info(`[bridge] cerrando sesion=${sesion.session_id} motivo=${motivo} duracion=${duracionSegundos}s`);
     store.actualizar(sesion.session_id, { estado: "finalizada", duracionSegundos });
     try { asteriskWs.close(); } catch (_) {}
     try { ultravoxWs.close(); } catch (_) {}
@@ -78,7 +82,10 @@ function manejarConexion(asteriskWs, sesion) {
   ultravoxWs.on("message", (data, isBinary) => {
     if (isBinary) {
       const salida = esMulaw ? pcm16ToMuLaw(data) : data;
-      if (asteriskWs.readyState === WebSocket.OPEN) asteriskWs.send(salida);
+      if (asteriskWs.readyState === WebSocket.OPEN) {
+        asteriskWs.isAlive = true; // audio del agente saliendo = sigue viva
+        asteriskWs.send(salida);
+      }
       return;
     }
     let msg;
