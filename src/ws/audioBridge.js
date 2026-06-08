@@ -144,6 +144,7 @@ function manejarConexion(asteriskWs, sesion) {
     try { ctrl = JSON.parse(data.toString()); } catch { return; }
     switch (ctrl.type) {
       case "session_end":
+        logger.info(`[bridge] session_end recibido del cliente sesion=${sesion.session_id} payload=${JSON.stringify(ctrl)}`);
         avisarHangup();
         cerrar(ctrl.motivo || "hangup_caller");
         break;
