@@ -17,13 +17,16 @@ const CLAVES_VACIAS = {
   tienda_cercana_limpia: "",
   marca_tienda: "",
   direccion_tienda: "",
+  direccion_limpia: "",
   telefono_tienda: "",
   tienda_2_nombre: "",
   tienda_2_nombre_limpia: "",
   tienda_2_direccion: "",
+  tienda_2_direccion_limpia: "",
   tienda_3_nombre: "",
   tienda_3_nombre_limpia: "",
   tienda_3_direccion: "",
+  tienda_3_direccion_limpia: "",
 };
 
 function leer(variables, ...claves) {
@@ -73,13 +76,18 @@ async function cargarTiendas(idEmpresa, variables = {}) {
       tienda_cercana_limpia: p1.nombreCompleto || "",
       marca_tienda: p1.marca || "",
       direccion_tienda: t1.direccion || "",
+      // El prompt usa {{direccion_limpia}}; la entregamos como alias de la cruda
+      // (el agente la preprocesa al hablar segun la seccion de pronunciacion).
+      direccion_limpia: t1.direccion || "",
       telefono_tienda: t1.telefono || "",
       tienda_2_nombre: t2.nombre || "",
       tienda_2_nombre_limpia: p2.nombreCompleto || "",
       tienda_2_direccion: t2.direccion || "",
+      tienda_2_direccion_limpia: t2.direccion || "",
       tienda_3_nombre: t3.nombre || "",
       tienda_3_nombre_limpia: p3.nombreCompleto || "",
       tienda_3_direccion: t3.direccion || "",
+      tienda_3_direccion_limpia: t3.direccion || "",
     };
   } catch (error) {
     logger.error(`[sucursales] buscarSucursal fallo (${error.message}) para '${termino}'`);
