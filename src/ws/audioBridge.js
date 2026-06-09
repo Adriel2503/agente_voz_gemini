@@ -146,9 +146,12 @@ function manejarConexion(asteriskWs, sesion) {
     try { ctrl = JSON.parse(data.toString()); } catch { return; }
     switch (ctrl.type) {
       case "session_end":
-        logger.info(`[bridge] session_end recibido del cliente sesion=${sesion.session_id} payload=${JSON.stringify(ctrl)}`);
-        avisarHangup();
-        cerrar(ctrl.motivo || "hangup_caller");
+        // PRUEBA: ignoramos el session_end del cliente para descartar que el corte
+        // venga de la app puente. Dejamos solo el log para ver quien lo manda y cuando.
+        // Si la llamada YA NO se corta, el origen es la app puente del integrador.
+        logger.info(`[bridge] session_end recibido del cliente (IGNORADO en modo prueba) sesion=${sesion.session_id} payload=${JSON.stringify(ctrl)}`);
+        // avisarHangup();
+        // cerrar(ctrl.motivo || "hangup_caller");
         break;
       case "ping":
         enviarAsterisk({ type: "pong" });
