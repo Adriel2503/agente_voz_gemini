@@ -63,7 +63,7 @@ class AgenteVozModel {
   // Catalogo de tipificaciones de la empresa (para mapear los eventos de Ultravox).
   async getTipificaciones(idEmpresa) {
     const [rows] = await this.connection.execute(
-      `SELECT id, nombre, equivalencia, nivel, id_padre
+      `SELECT id, nombre, equivalencia, nivel, id_padre, codigo_homologacion_api_agente
        FROM tipificacion_llamada
        WHERE id_empresa = ? AND estado_registro = 1
        ORDER BY orden ASC`,

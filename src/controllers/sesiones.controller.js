@@ -185,6 +185,7 @@ async function transcripcionSesion(req, res) {
     session_id: s.session_id,
     duracion_segundos: s.duracionSegundos || 0,
     tipificacion: s.tipificacionFinal || null,
+    agendamiento: s.agendamientoFinal || null,
     variables_capturadas: s.variablesCapturadas || {},
     mensajes: mensajes.map((m) => ({ rol: m.role, ts: m.timespan?.start ?? null, texto: m.text })),
   });

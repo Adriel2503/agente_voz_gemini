@@ -43,6 +43,65 @@ function manejarConexion(asteriskWs, sesion) {
     });
   };
 
+  // Ultravox manda los args de la tool como objeto o como string JSON.
+  const parsearArgs = (raw) => {
+    if (!raw) return {};
+    if (typeof raw === "object") return raw;
+    try { return JSON.parse(raw); } catch { return {}; }
+  };
+
+  // Captura la tipificacion elegida por el agente y la persiste en la sesion.
+  // El catalogo (sesion.tipificaciones) mapea el id a su nombre legible.
+  const capturarTipificacion = (args) => {
+    const idTip = Number(args?.id_tipificacion_llamada);
+    if (!Number.isInteger(idTip) || idTip <= 0) {
+      logger.warn(`[bridge] tipificarLlamada sin id valido sesion=${sesion.session_id} args=${JSON.stringify(args)}`);
+      return;
+    }
+    const cat = (sesion.tipificaciones || []).find((t) => Number(t.id) === idTip) || null;
+    sesion.tipificacionFinal = {
+      id: idTip,
+      nombre: cat?.nombre || null,
+      equivalencia: cat?.equivalencia ?? null,
+      codigo_homologacion: cat?.codigo_homologacion_api_agente ?? null,
+    };
+    logger.info(`[bridge] tipificacion capturada sesion=${sesion.session_id} id=${idTip} nombre="${cat?.nombre || ''}" homologacion="${cat?.codigo_homologacion_api_agente || ''}"`);
+
+    new ApiVozModel()
+      .upsertSesion(sesion.idEmpresa, {
+        session_id: sesion.session_id,
+        estado: sesion.estado || "en_curso",
+        id_tipificacion: idTip,
+        tipificacion: sesion.tipificacionFinal,
+      })
+      .catch((e) => logger.error(`[bridge] upsert tipificacion: ${e.message}`));
+  };
+
+  // Captura la cita que el agente agenda (tool agendar_cita_target) y la
+  // persiste en agendamiento_agente_voz, ligada a la sesion de voz.
+  const capturarAgendamiento = (args) => {
+    const tienda = (args?.tienda ?? "").toString().trim() || null;
+    const fecha = (args?.fecha ?? "").toString().trim() || null;
+    const hora = (args?.hora ?? "").toString().trim() || null;
+    const agencia = (args?.agencia ?? "").toString().trim() || null;
+    if (!tienda || !fecha || !hora) {
+      logger.warn(`[bridge] agendar_cita_target incompleto sesion=${sesion.session_id} args=${JSON.stringify(args)}`);
+      return;
+    }
+    sesion.agendamientoFinal = { tienda, agencia, fecha, hora };
+    new ApiVozModel()
+      .crearAgendamiento({
+        session_id: sesion.session_id,
+        idEmpresa: sesion.idEmpresa,
+        tienda,
+        agencia,
+        fecha,
+        hora,
+      })
+      .then((id) => logger.info(`[bridge] agendamiento guardado sesion=${sesion.session_id} id=${id} tienda="${tienda}" agencia="${agencia || ''}" ${fecha} ${hora}`))
+      .catch((e) => logger.error(`[bridge] crear agendamiento: ${e.message}`));
+  };
+
   const cerrar = (motivo) => {
     if (cerrado) return;
     cerrado = true;
@@ -58,6 +117,8 @@ function manejarConexion(asteriskWs, sesion) {
         estado: "ended",
         motivo_fin: motivo,
         duracion_segundos: duracionSegundos,
+        id_tipificacion: sesion.tipificacionFinal?.id || null,
+        tipificacion: sesion.tipificacionFinal || null,
         fecha_fin: new Date().toISOString(),
       })
       .catch((e) => logger.error(`[bridge] upsert ended: ${e.message}`));
@@ -66,7 +127,7 @@ function manejarConexion(asteriskWs, sesion) {
       enviarWebhook(sesion.webhook, "session.ended", {
         session_id: sesion.session_id,
         metadata: sesion.metadata,
-        resumen: { duracion_segundos: duracionSegundos, tipificacion: sesion.tipificacionFinal || null },
+        resumen: { duracion_segundos: duracionSegundos, tipificacion: sesion.tipificacionFinal || null, agendamiento: sesion.agendamientoFinal || null },
       });
     }
     store.eliminar(sesion.session_id);
@@ -115,16 +176,21 @@ function manejarConexion(asteriskWs, sesion) {
         enviarAsterisk({ type: "playback_clear_buffer" });
         break;
       case "toolUsed":
-      case "tool":
-        logger.info(`[bridge] tool del agente sesion=${sesion.session_id} name=${msg.toolName || msg.name} args=${JSON.stringify(msg.parameters || msg.args || {})}`);
-        enviarAsterisk({ type: "tool_call", name: msg.toolName || msg.name, args: msg.parameters || msg.args });
+      case "tool": {
+        const toolName = msg.toolName || msg.name;
+        const toolArgs = parsearArgs(msg.parameters || msg.args);
+        logger.info(`[bridge] tool del agente sesion=${sesion.session_id} name=${toolName} args=${JSON.stringify(toolArgs)}`);
+        enviarAsterisk({ type: "tool_call", name: toolName, args: toolArgs });
+        if (toolName === "tipificarLlamada") capturarTipificacion(toolArgs);
+        if (toolName === "agendar_cita_target") capturarAgendamiento(toolArgs);
         if (sesion.webhook) {
           enviarWebhook(sesion.webhook, "session.tool_call", {
             session_id: sesion.session_id,
-            tool: { name: msg.toolName || msg.name, args: msg.parameters || msg.args },
+            tool: { name: toolName, args: toolArgs },
           });
         }
         break;
+      }
       case "user_started_speaking":
       case "user_stopped_speaking":
       default:
