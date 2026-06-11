@@ -66,18 +66,12 @@ function manejarConexion(asteriskWs, sesion) {
       codigo_homologacion: cat?.codigo_homologacion_api_agente ?? null,
     };
     logger.info(`[bridge] tipificacion capturada sesion=${sesion.session_id} id=${idTip} nombre="${cat?.nombre || ''}" homologacion="${cat?.codigo_homologacion_api_agente || ''}"`);
-
-    new ApiVozModel()
-      .upsertSesion(sesion.idEmpresa, {
-        session_id: sesion.session_id,
-        estado: sesion.estado || "en_curso",
-        id_tipificacion: idTip,
-        tipificacion: sesion.tipificacionFinal,
-      })
-      .catch((e) => logger.error(`[bridge] upsert tipificacion: ${e.message}`));
+    // La persistencia en api_voz_sesion la hace app-api via la tool tipificarLlamada
+    // (recibe session_id como static param). Aqui solo guardamos estado en memoria
+    // para el resumen del webhook session.ended y la transcripcion REST.
   };
 
-  // Captura la cita que el agente agenda (tool agendar_cita_target) y la
+  // Captura la cita que el agente agenda (tool agendar_cita) y la
   // persiste en agendamiento_agente_voz, ligada a la sesion de voz.
   const capturarAgendamiento = (args) => {
     const tienda = (args?.tienda ?? "").toString().trim() || null;
@@ -85,21 +79,14 @@ function manejarConexion(asteriskWs, sesion) {
     const hora = (args?.hora ?? "").toString().trim() || null;
     const agencia = (args?.agencia ?? "").toString().trim() || null;
     if (!tienda || !fecha || !hora) {
-      logger.warn(`[bridge] agendar_cita_target incompleto sesion=${sesion.session_id} args=${JSON.stringify(args)}`);
+      logger.warn(`[bridge] agendar_cita incompleto sesion=${sesion.session_id} args=${JSON.stringify(args)}`);
       return;
     }
     sesion.agendamientoFinal = { tienda, agencia, fecha, hora };
-    new ApiVozModel()
-      .crearAgendamiento({
-        session_id: sesion.session_id,
-        idEmpresa: sesion.idEmpresa,
-        tienda,
-        agencia,
-        fecha,
-        hora,
-      })
-      .then((id) => logger.info(`[bridge] agendamiento guardado sesion=${sesion.session_id} id=${id} tienda="${tienda}" agencia="${agencia || ''}" ${fecha} ${hora}`))
-      .catch((e) => logger.error(`[bridge] crear agendamiento: ${e.message}`));
+    logger.info(`[bridge] agendamiento capturado sesion=${sesion.session_id} tienda="${tienda}" agencia="${agencia || ''}" ${fecha} ${hora}`);
+    // La persistencia en agendamiento_agente_voz la hace app-api via la tool
+    // agendar_cita (recibe session_id como static param). Aqui solo guardamos
+    // estado en memoria para el webhook session.ended y la transcripcion REST.
   };
 
   const cerrar = (motivo) => {
@@ -182,7 +169,7 @@ function manejarConexion(asteriskWs, sesion) {
         logger.info(`[bridge] tool del agente sesion=${sesion.session_id} name=${toolName} args=${JSON.stringify(toolArgs)}`);
         enviarAsterisk({ type: "tool_call", name: toolName, args: toolArgs });
         if (toolName === "tipificarLlamada") capturarTipificacion(toolArgs);
-        if (toolName === "agendar_cita_target") capturarAgendamiento(toolArgs);
+        if (toolName === "agendar_cita") capturarAgendamiento(toolArgs);
         if (sesion.webhook) {
           enviarWebhook(sesion.webhook, "session.tool_call", {
             session_id: sesion.session_id,
@@ -212,12 +199,9 @@ function manejarConexion(asteriskWs, sesion) {
     try { ctrl = JSON.parse(data.toString()); } catch { return; }
     switch (ctrl.type) {
       case "session_end":
-        // PRUEBA: ignoramos el session_end del cliente para descartar que el corte
-        // venga de la app puente. Dejamos solo el log para ver quien lo manda y cuando.
-        // Si la llamada YA NO se corta, el origen es la app puente del integrador.
-        logger.info(`[bridge] session_end recibido del cliente (IGNORADO en modo prueba) sesion=${sesion.session_id} payload=${JSON.stringify(ctrl)}`);
-        // avisarHangup();
-        // cerrar(ctrl.motivo || "hangup_caller");
+        logger.info(`[bridge] session_end recibido del cliente sesion=${sesion.session_id} payload=${JSON.stringify(ctrl)}`);
+        avisarHangup();
+        cerrar(ctrl.motivo || "hangup_caller");
         break;
       case "ping":
         enviarAsterisk({ type: "pong" });

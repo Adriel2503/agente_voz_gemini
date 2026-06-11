@@ -27,17 +27,14 @@ const genericaTools = [
         baseUrlPattern: "https://app-api.ai-you.io/api/crm/tools/llamadas/nuevaTipificacion",
         httpMethod: "PUT",
       },
+      staticParameters: [
+        { name: "session_id", location: "PARAMETER_LOCATION_BODY", value: "{{session_id}}" },
+      ],
       dynamicParameters: [
         {
           name: "id_tipificacion_llamada",
           location: "PARAMETER_LOCATION_BODY",
           schema: { type: "integer", description: "ID de la tificación correspondiente a registrar a la persona" },
-          required: true,
-        },
-        {
-          name: "provider_call_id",
-          location: "PARAMETER_LOCATION_BODY",
-          schema: { type: "integer", description: "ID de la llamada a tipificar" },
           required: true,
         },
       ],
@@ -98,21 +95,18 @@ const genericaTools = [
   },
   {
     temporaryTool: {
-      modelToolName: "agendar_cita_target",
+      modelToolName: "agendar_cita",
       description:
-        "Registra la cita confirmada por el cliente en la tabla agendamiento_llamada. Llamar SOLO cuando el cliente confirmó explícitamente fecha, hora y tienda. Recibe: tienda (display name hablado al cliente, ej. 'CARSA Ate Porvenir'), agencia (nombre crudo de la sucursal del JSON de buscarSucursal o de la pre-cargada, ej. 'CARSA_ATE PORVENIR' — sirve para cruce con tabla brand), fecha en formato YYYY-MM-DD (ej. '2026-05-09') y hora en formato 24h HH:MM:SS (ej. '15:30:00'). El provider_call_id es el id de la llamada actual.",
+        "Registra la cita confirmada por el cliente. Llamar SOLO cuando el cliente confirmó explícitamente fecha, hora y tienda. Recibe: tienda (display name hablado al cliente, ej. 'CARSA Ate Porvenir'), agencia (nombre crudo de la sucursal del JSON de buscarSucursal o de la pre-cargada, ej. 'CARSA_ATE PORVENIR' — sirve para cruce con tabla brand), fecha en formato YYYY-MM-DD (ej. '2026-05-09') y hora en formato 24h HH:MM:SS (ej. '15:30:00').",
       timeout: "5s",
       http: {
-        baseUrlPattern: "https://app-api.ai-you.io/api/crm/tools/llamadas/agendarCitaTarget",
+        baseUrlPattern: "https://app-api.ai-you.io/api/crm/tools/llamadas/agendarCita",
         httpMethod: "POST",
       },
+      staticParameters: [
+        { name: "session_id", location: "PARAMETER_LOCATION_BODY", value: "{{session_id}}" },
+      ],
       dynamicParameters: [
-        {
-          name: "provider_call_id",
-          location: "PARAMETER_LOCATION_BODY",
-          schema: { type: "string", description: "ID de la llamada actual (provider_call_id de la sesión)" },
-          required: true,
-        },
         {
           name: "tienda",
           location: "PARAMETER_LOCATION_BODY",

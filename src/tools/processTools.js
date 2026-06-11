@@ -2,7 +2,7 @@
 // Portado de ultravoxapi.service.js (processTools): reemplaza {{id_empresa}} y
 // {{provider_call_id}} en staticParameters; opcionalmente reescribe el host
 // ai-you.io de baseUrlPattern por un backend dinámico (default: dejar tal cual).
-function replaceParams(params, { idEmpresa, providerCallId }) {
+function replaceParams(params, { idEmpresa, providerCallId, sessionId }) {
   if (!Array.isArray(params)) return params;
   return params.map((p) => {
     if (p?.name === "id_empresa" && p?.value === "{{id_empresa}}") {
@@ -11,13 +11,16 @@ function replaceParams(params, { idEmpresa, providerCallId }) {
     if (p?.value === "{{provider_call_id}}") {
       return { ...p, value: providerCallId };
     }
+    if (p?.value === "{{session_id}}") {
+      return { ...p, value: sessionId };
+    }
     return p;
   });
 }
 
 // toolsList: array de tools (ej. require('./generica.js'))
 // opts: { idEmpresa, providerCallId, backendUrl }
-function processTools(toolsList, { idEmpresa, providerCallId, backendUrl = null } = {}) {
+function processTools(toolsList, { idEmpresa, providerCallId, sessionId = null, backendUrl = null } = {}) {
   if (!Array.isArray(toolsList)) return [];
 
   return toolsList.map((tool) => {
@@ -28,7 +31,7 @@ function processTools(toolsList, { idEmpresa, providerCallId, backendUrl = null 
         ...updated,
         temporaryTool: {
           ...updated.temporaryTool,
-          staticParameters: replaceParams(tool.temporaryTool.staticParameters, { idEmpresa, providerCallId }),
+          staticParameters: replaceParams(tool.temporaryTool.staticParameters, { idEmpresa, providerCallId, sessionId }),
         },
       };
     }

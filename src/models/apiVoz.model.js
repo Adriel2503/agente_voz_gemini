@@ -91,27 +91,6 @@ class ApiVozModel {
     );
     return result.rows?.[0]?.id ?? result.insertId ?? null;
   }
-
-  // Registra la cita que el agente agenda durante una sesion de voz.
-  // Analogo a agendamiento_llamada: desactiva el agendamiento activo previo de
-  // la misma sesion (historial) y luego inserta el nuevo.
-  async crearAgendamiento({ session_id, idEmpresa, tienda, agencia, fecha, hora }) {
-    await this.connection.execute(
-      `UPDATE agendamiento_agente_voz
-          SET estado_registro = 0, fecha_actualizacion = CURRENT_TIMESTAMP
-        WHERE session_id = ? AND estado_registro = 1`,
-      [session_id]
-    );
-
-    const [result] = await this.connection.execute(
-      `INSERT INTO agendamiento_agente_voz
-          (session_id, id_empresa, tienda, agencia, fecha, hora, usuario_registro)
-       VALUES (?, ?, ?, ?, ?, ?, 'agente_voz')
-       RETURNING id`,
-      [session_id, idEmpresa ?? null, tienda || null, agencia || null, fecha || null, hora || null]
-    );
-    return result.rows?.[0]?.id ?? result.insertId ?? null;
-  }
 }
 
 module.exports = ApiVozModel;

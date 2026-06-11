@@ -79,9 +79,15 @@ async function crearSesion(req, res) {
 
     const systemPrompt = await renderPromptConFeriados(promptPlantilla, varsPrompt);
     const sampleRate = codec === "mulaw_8k" ? 8000 : 16000;
+
+    // Generamos el session_id aqui para inyectarlo como static param de las tools.
+    // Asi las tools (tipificarLlamada / agendar_cita) lo mandan a app-api y la
+    // persistencia no depende del evento WS toolUsed.
+    const sessionId = store.nuevoSessionId();
     const selectedTools = processTools(genericaTools, {
       idEmpresa,
       providerCallId,
+      sessionId,
       backendUrl: env.toolsBackendUrl, // null = dejar URLs ai-you.io tal cual
     });
 
@@ -97,6 +103,7 @@ async function crearSesion(req, res) {
     const webhook = await apiVoz.getWebhookConfig(idEmpresa);
 
     const registro = store.crear({
+      session_id: sessionId,
       idEmpresa,
       apiKey: empresa.ultravox_api_key,
       callId,

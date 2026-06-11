@@ -11,13 +11,13 @@ function nuevoSessionId() {
 }
 
 function crear(ctx) {
-  const session_id = nuevoSessionId();
+  const session_id = ctx.session_id || nuevoSessionId();
   const registro = {
-    session_id,
     creada_en: Date.now(),
     estado: "pendiente",
     conectado: false,
     ...ctx, // idEmpresa, apiKey, callId, joinUrl, idPlantilla, codec, metadata, tipificaciones, webhook
+    session_id,
   };
   sesiones.set(session_id, registro);
   return registro;
@@ -42,4 +42,4 @@ function purgarExpiradas(maxEdadMs = 30000) {
   }
 }
 
-module.exports = { crear, obtener, actualizar, eliminar, purgarExpiradas };
+module.exports = { crear, obtener, actualizar, eliminar, purgarExpiradas, nuevoSessionId };
