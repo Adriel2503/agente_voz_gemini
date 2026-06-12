@@ -98,34 +98,80 @@ function manejarConexion(asteriskWs, sesion) {
     try { asteriskWs.close(); } catch (_) {}
     try { ultravoxWs.close(); } catch (_) {}
 
-    new ApiVozModel()
-      .upsertSesion(sesion.idEmpresa, {
-        session_id: sesion.session_id,
-        estado: "ended",
-        motivo_fin: motivo,
-        duracion_segundos: duracionSegundos,
-        id_tipificacion: sesion.tipificacionFinal?.id || null,
-        tipificacion: sesion.tipificacionFinal || null,
-        fecha_fin: new Date().toISOString(),
-      })
-      .catch((e) => logger.error(`[bridge] upsert ended: ${e.message}`));
+    (async () => {
+      const apiVoz = new ApiVozModel();
 
-    if (sesion.webhook) {
-      enviarWebhook(sesion.webhook, "session.ended", {
-        session_id: sesion.session_id,
-        metadata: sesion.metadata,
-        variables: sesion.variables || {},
-        resumen: { duracion_segundos: duracionSegundos, tipificacion: sesion.tipificacionFinal || null, agendamiento: sesion.agendamientoFinal || null },
-      });
-    }
-    store.eliminar(sesion.session_id);
+      // Respaldo: si el evento WS toolUsed no llego, la tipificacion igual quedo en
+      // BD (la tool tipificarLlamada la persiste por session_id). La leemos y la
+      // mapeamos contra el catalogo en memoria para el resumen del webhook.
+      if (!sesion.tipificacionFinal) {
+        try {
+          const idTip = await apiVoz.getIdTipificacionBySession(sesion.session_id);
+          if (idTip) {
+            const cat = (sesion.tipificaciones || []).find((t) => Number(t.id) === Number(idTip)) || null;
+            sesion.tipificacionFinal = {
+              id: Number(idTip),
+              nombre: cat?.nombre || null,
+              equivalencia: cat?.equivalencia ?? null,
+              codigo_homologacion: cat?.codigo_homologacion_api_agente ?? null,
+            };
+            logger.info(`[bridge] tipificacion recuperada de BD sesion=${sesion.session_id} id=${idTip}`);
+          }
+        } catch (e) {
+          logger.warn(`[bridge] leer tipificacion BD: ${e.message}`);
+        }
+      }
+
+      // Mismo respaldo para la cita: si el evento WS no llego, app-api ya la guardo
+      // en agendamiento_agente_voz por session_id.
+      if (!sesion.agendamientoFinal) {
+        try {
+          const cita = await apiVoz.getAgendamientoBySession(sesion.session_id);
+          if (cita) {
+            sesion.agendamientoFinal = {
+              tienda: cita.tienda ?? null,
+              agencia: cita.agencia ?? null,
+              fecha: cita.fecha ?? null,
+              hora: cita.hora ?? null,
+            };
+            logger.info(`[bridge] agendamiento recuperado de BD sesion=${sesion.session_id} tienda="${cita.tienda || ''}" ${cita.fecha || ''} ${cita.hora || ''}`);
+          }
+        } catch (e) {
+          logger.warn(`[bridge] leer agendamiento BD: ${e.message}`);
+        }
+      }
+
+      try {
+        await apiVoz.upsertSesion(sesion.idEmpresa, {
+          session_id: sesion.session_id,
+          estado: "ended",
+          motivo_fin: motivo,
+          duracion_segundos: duracionSegundos,
+          id_tipificacion: sesion.tipificacionFinal?.id || null,
+          tipificacion: sesion.tipificacionFinal || null,
+          fecha_fin: new Date().toISOString(),
+        });
+      } catch (e) {
+        logger.error(`[bridge] upsert ended: ${e.message}`);
+      }
+
+      if (sesion.webhook) {
+        enviarWebhook(sesion.webhook, "session.ended", {
+          session_id: sesion.session_id,
+          metadata: sesion.metadata,
+          variables: sesion.variables || {},
+          resumen: { duracion_segundos: duracionSegundos, tipificacion: sesion.tipificacionFinal || null, agendamiento: sesion.agendamientoFinal || null },
+        });
+      }
+      store.eliminar(sesion.session_id);
+    })();
   };
   store.actualizar(sesion.session_id, { cerrar }); // para POST /terminar
 
   // --- Ultravox -> Asterisk ---
   ultravoxWs.on("open", () => {
     store.actualizar(sesion.session_id, { estado: "en_curso" });
-    if (sesion.webhook) enviarWebhook(sesion.webhook, "session.connected", { session_id: sesion.session_id });
+    if (sesion.webhook) enviarWebhook(sesion.webhook, "session.connected", { session_id: sesion.session_id, variables: sesion.variables || {} });
   });
 
   ultravoxWs.on("message", (data, isBinary) => {
@@ -174,6 +220,7 @@ function manejarConexion(asteriskWs, sesion) {
         if (sesion.webhook) {
           enviarWebhook(sesion.webhook, "session.tool_call", {
             session_id: sesion.session_id,
+            variables: sesion.variables || {},
             tool: { name: toolName, args: toolArgs },
           });
         }

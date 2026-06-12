@@ -91,6 +91,32 @@ class ApiVozModel {
     );
     return result.rows?.[0]?.id ?? result.insertId ?? null;
   }
+
+  // Lee el id_tipificacion que app-api persistio para la sesion (la tool
+  // tipificarLlamada lo guarda por session_id). Sirve de respaldo en cerrar()
+  // cuando el evento WS toolUsed no llego y no hay tipificacion en memoria.
+  async getIdTipificacionBySession(session_id) {
+    const [rows] = await this.connection.execute(
+      `SELECT id_tipificacion FROM api_voz_sesion WHERE session_id = ?`,
+      [session_id]
+    );
+    return rows?.[0]?.id_tipificacion ?? null;
+  }
+
+  // Lee la cita activa que app-api persistio para la sesion (la tool agendar_cita
+  // la guarda por session_id). Respaldo en cerrar() cuando el evento WS toolUsed
+  // no llego y no hay agendamiento en memoria.
+  async getAgendamientoBySession(session_id) {
+    const [rows] = await this.connection.execute(
+      `SELECT tienda, agencia, fecha, hora
+         FROM agendamiento_agente_voz
+        WHERE session_id = ? AND estado_registro = 1
+        ORDER BY id DESC
+        LIMIT 1`,
+      [session_id]
+    );
+    return rows?.[0] ?? null;
+  }
 }
 
 module.exports = ApiVozModel;
