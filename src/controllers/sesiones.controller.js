@@ -112,6 +112,7 @@ async function crearSesion(req, res) {
       codec,
       sampleRate,
       metadata,
+      variables, // las variables originales que mando el cliente, para devolverlas en los webhooks
       tipificaciones,
       idTool: idToolFinal,
       webhook: webhook ? { webhookUrl: webhook.webhook_url, webhookSecret: webhook.webhook_secret } : null,
@@ -127,7 +128,7 @@ async function crearSesion(req, res) {
     });
 
     if (registro.webhook) {
-      enviarWebhook(registro.webhook, "session.created", { session_id: registro.session_id, metadata });
+      enviarWebhook(registro.webhook, "session.created", { session_id: registro.session_id, metadata, variables });
     }
 
     const host = req.headers["x-forwarded-host"] || req.headers.host;

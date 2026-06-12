@@ -114,6 +114,7 @@ function manejarConexion(asteriskWs, sesion) {
       enviarWebhook(sesion.webhook, "session.ended", {
         session_id: sesion.session_id,
         metadata: sesion.metadata,
+        variables: sesion.variables || {},
         resumen: { duracion_segundos: duracionSegundos, tipificacion: sesion.tipificacionFinal || null, agendamiento: sesion.agendamientoFinal || null },
       });
     }
