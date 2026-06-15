@@ -14,6 +14,7 @@ const ultravox = require("../services/ultravox.service.js");
 const ApiVozModel = require("../models/apiVoz.model.js");
 const store = require("../sessions/store.js");
 const logger = require("../config/logger.js");
+const env = require("../config/env.js");
 
 function manejarConexion(asteriskWs, sesion) {
   const iniciadoEn = Date.now();
@@ -22,6 +23,7 @@ function manejarConexion(asteriskWs, sesion) {
   const ultravoxWs = new WebSocket(sesion.joinUrl);
   const esMulaw = sesion.codec === "mulaw_8k";
   let cerrado = false;
+  let finalizando = false;
   let agenteHablando = false;
   let hangupAvisado = false;
 
@@ -166,6 +168,44 @@ function manejarConexion(asteriskWs, sesion) {
       store.eliminar(sesion.session_id);
     })();
   };
+
+  // Cierre por colgado del caller: le pide al agente que tipifique y cuelgue, y
+  // espera una ventana de gracia ANTES de cerrar Ultravox / disparar el webhook.
+  // Sin esto, cerrar() mataba el WS de inmediato y el agente nunca alcanzaba a
+  // ejecutar tipificarLlamada -> el webhook session.ended salia sin tipificacion.
+  const finalizarConGracia = (motivo) => {
+    if (cerrado || finalizando) return;
+    finalizando = true;
+    avisarHangup(); // "tipifica la llamada y cuelga"
+
+    const graciaMs = env.graciaTipificacionMs || 0;
+    if (graciaMs <= 0) { cerrar(motivo); return; }
+
+    logger.info(`[bridge] esperando tipificacion (gracia ${graciaMs}ms) sesion=${sesion.session_id} motivo=${motivo}`);
+    const apiVoz = new ApiVozModel();
+    const limite = Date.now() + graciaMs;
+
+    const tick = async () => {
+      if (cerrado) return;
+      // Listo cuando: ya tipifico (memoria), el agente colgo (Ultravox cerrado),
+      // o se agoto la ventana. Tambien consultamos BD porque la tool tipificarLlamada
+      // persiste por session_id aunque el evento WS toolUsed no llegue.
+      let listo = !!sesion.tipificacionFinal
+        || ultravoxWs.readyState === WebSocket.CLOSED
+        || Date.now() >= limite;
+      if (!listo) {
+        try {
+          const idTip = await apiVoz.getIdTipificacionBySession(sesion.session_id);
+          if (idTip) listo = true;
+        } catch (_) {}
+      }
+      if (cerrado) return;
+      if (listo) { cerrar(motivo); return; }
+      setTimeout(tick, 500);
+    };
+    setTimeout(tick, 500);
+  };
+
   store.actualizar(sesion.session_id, { cerrar }); // para POST /terminar
 
   // --- Ultravox -> Asterisk ---
@@ -248,8 +288,7 @@ function manejarConexion(asteriskWs, sesion) {
     switch (ctrl.type) {
       case "session_end":
         logger.info(`[bridge] session_end recibido del cliente sesion=${sesion.session_id} payload=${JSON.stringify(ctrl)}`);
-        avisarHangup();
-        cerrar(ctrl.motivo || "hangup_caller");
+        finalizarConGracia(ctrl.motivo || "hangup_caller");
         break;
       case "ping":
         enviarAsterisk({ type: "pong" });
@@ -265,7 +304,7 @@ function manejarConexion(asteriskWs, sesion) {
     }
   });
 
-  asteriskWs.on("close", () => { avisarHangup(); cerrar("asterisk_close"); });
+  asteriskWs.on("close", () => finalizarConGracia("asterisk_close"));
   asteriskWs.on("error", (e) => { logger.warn(`[bridge] asterisk error: ${e.message}`); cerrar("asterisk_error"); });
 }
 

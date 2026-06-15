@@ -60,14 +60,22 @@ class AgenteVozModel {
     return rows[0] || null;
   }
 
-  // Catalogo de tipificaciones de la empresa (para mapear los eventos de Ultravox).
+  // Catalogo de tipificaciones de la empresa (para el prompt y para mapear los
+  // eventos de Ultravox). Solo devolvemos HOJAS: nodos que no son padre de ningun
+  // otro nodo activo. El codigo_homologacion_api_agente vive en las hojas; si se
+  // ofrecieran tambien los nodos padre, el agente podia elegir una categoria
+  // intermedia (sin codigo) y el webhook quedaba sin codigo_homologacion.
   async getTipificaciones(idEmpresa) {
     const [rows] = await this.connection.execute(
-      `SELECT id, nombre, equivalencia, nivel, id_padre, codigo_homologacion_api_agente
-       FROM tipificacion_llamada
-       WHERE id_empresa = ? AND estado_registro = 1
-       ORDER BY orden ASC`,
-      [idEmpresa]
+      `SELECT t.id, t.nombre, t.equivalencia, t.nivel, t.id_padre, t.codigo_homologacion_api_agente
+       FROM tipificacion_llamada t
+       WHERE t.id_empresa = ? AND t.estado_registro = 1
+         AND NOT EXISTS (
+           SELECT 1 FROM tipificacion_llamada c
+           WHERE c.id_padre = t.id AND c.id_empresa = ? AND c.estado_registro = 1
+         )
+       ORDER BY t.orden ASC`,
+      [idEmpresa, idEmpresa]
     );
     return rows;
   }

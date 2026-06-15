@@ -9,6 +9,10 @@ const env = {
   },
   defaultVoiceCode: process.env.DEFAULT_VOICE_CODE || null,
   audioSampleRate: parseInt(process.env.AUDIO_SAMPLE_RATE, 10) || 8000,
+  // Ventana de gracia tras el colgado del caller para que el agente alcance a
+  // tipificar (tool tipificarLlamada) antes de cerrar Ultravox y disparar el
+  // webhook session.ended. 0 = cerrar inmediato (comportamiento anterior).
+  graciaTipificacionMs: parseInt(process.env.GRACIA_TIPIFICACION_MS, 10) || 6000,
   // Si se setea, processTools reescribe los hosts ai-you.io de las tools a esta URL.
   // null = dejar las URLs de las tools genéricas tal cual (app-api.ai-you.io).
   toolsBackendUrl: process.env.TOOLS_BACKEND_URL || null,
