@@ -4,6 +4,44 @@ const logger = require("../config/logger.js");
 
 const { baseUrl, timeoutMs, reintentos } = env.ultravox;
 
+// Rango valido de speed por provider (segun docs Ultravox). Fuera de rango,
+// Ultravox responde 400, asi que clampeamos al rango del provider.
+const RANGOS_SPEED = {
+  elevenlabs: [0.7, 1.2],
+  cartesia: [0.6, 1.5],
+  google: [0.25, 2],
+  lmnt: [0.25, 2],
+  inworld: [0.5, 1.5],
+};
+
+// "Eleven Labs" / "elevenLabs" -> "elevenlabs"
+function normalizarProvider(p) {
+  return String(p || "").toLowerCase().replace(/[^a-z]/g, "");
+}
+
+// Construye el voiceOverrides de velocidad para una voz integrada. El provider
+// del override DEBE coincidir con el de la voz; cada provider usa su propio campo.
+// Devuelve null cuando no hay que aplicar override (velocidad 1/normal, provider
+// desconocido o velocidad invalida) para no arriesgar un 400 de Ultravox.
+function construirVoiceOverrides(provider, velocidad) {
+  if (velocidad == null) return null;
+  let speed = Number(velocidad);
+  if (!Number.isFinite(speed)) return null;
+  const p = normalizarProvider(provider);
+  const rango = RANGOS_SPEED[p];
+  if (!rango) return null; // provider desconocido: no override
+  speed = Math.min(rango[1], Math.max(rango[0], speed)); // clamp al rango
+  if (speed === 1) return null; // 1 = normal, sin override
+  switch (p) {
+    case "elevenlabs": return { elevenLabs: { speed } };
+    case "cartesia": return { cartesia: { generationConfig: { speed } } };
+    case "google": return { google: { speakingRate: speed } };
+    case "lmnt": return { lmnt: { speed } };
+    case "inworld": return { inworld: { speakingRate: speed } };
+    default: return null;
+  }
+}
+
 // Crea una llamada en Ultravox con medium serverWebSocket. Payload alineado con
 // el voice-backend real (aiyou/aiyou-voice-backend ultravoxapi.service.js:240-284).
 // Devuelve { callId, joinUrl }.
@@ -15,6 +53,8 @@ async function crearLlamadaServerWs({
   sampleRate = env.audioSampleRate,
   languageHint = "es",
   temperature = 0.85,
+  voiceProvider = null,
+  velocidad = null,
 }) {
   if (!apiKey) throw new Error("Falta ultravox_api_key de la empresa");
 
@@ -46,6 +86,9 @@ async function crearLlamadaServerWs({
     selectedTools: [{ toolName: "hangUp" }, ...selectedTools],
   };
   if (voice) payload.voice = voice;
+
+  const voiceOverrides = construirVoiceOverrides(voiceProvider, velocidad);
+  if (voiceOverrides) payload.voiceOverrides = voiceOverrides;
 
   const resp = await axios.post(`${baseUrl}/calls`, payload, {
     headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
@@ -154,4 +197,4 @@ async function obtenerMensajes(apiKey, callId) {
   return { estado: "ERROR_DESCONOCIDO", mensajes: [] };
 }
 
-module.exports = { crearLlamadaServerWs, sendDataMessage, listarVoces, getCall, obtenerMensajes, clasificarError };
+module.exports = { crearLlamadaServerWs, sendDataMessage, listarVoces, getCall, obtenerMensajes, clasificarError, construirVoiceOverrides };

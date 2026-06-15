@@ -8,6 +8,11 @@ const env = {
     reintentos: parseInt(process.env.ULTRAVOX_REINTENTOS, 10) || 2,
   },
   defaultVoiceCode: process.env.DEFAULT_VOICE_CODE || null,
+  // Provider de la voz por defecto (para construir voiceOverrides de velocidad
+  // cuando no se manda id_voz). "Eleven Labs" se normaliza a "elevenlabs".
+  defaultVoiceProvider: process.env.DEFAULT_VOICE_PROVIDER || "elevenlabs",
+  // Velocidad de habla global por defecto. null = no aplicar override (normal).
+  defaultVoiceSpeed: process.env.DEFAULT_VOICE_SPEED ? parseFloat(process.env.DEFAULT_VOICE_SPEED) : null,
   audioSampleRate: parseInt(process.env.AUDIO_SAMPLE_RATE, 10) || 8000,
   // Ventana de gracia tras el colgado del caller para que el agente alcance a
   // tipificar (tool tipificarLlamada) antes de cerrar Ultravox y disparar el

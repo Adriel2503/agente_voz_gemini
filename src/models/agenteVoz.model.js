@@ -44,7 +44,7 @@ class AgenteVozModel {
   // (id_empresa NULL) o las suyas propias.
   async getVoz(idVoz, idEmpresa = null) {
     const [rows] = await this.connection.execute(
-      `SELECT id, voice_code FROM voz
+      `SELECT id, voice_code, velocidad, provider FROM voz
        WHERE id = ? AND estado_registro = 1 AND (id_empresa IS NULL OR id_empresa = ?)`,
       [idVoz, idEmpresa ?? null]
     );

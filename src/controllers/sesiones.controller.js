@@ -15,7 +15,7 @@ const err = (res, http, codigo, msg) => res.status(http).json({ codigo, msg });
 // POST /v1/agente-voz/sesiones
 async function crearSesion(req, res) {
   const idEmpresa = req.apiVozEmpresa;
-  const { id_plantilla, id_voz, id_tool, variables = {}, codec = "pcm_s16le_16k", metadata = null } = req.body || {};
+  const { id_plantilla, id_voz, id_tool, variables = {}, codec = "pcm_s16le_16k", metadata = null, velocidad: velocidadBody = null } = req.body || {};
 
   if (!id_plantilla) return err(res, 400, "plantilla_invalida", "id_plantilla requerido");
 
@@ -34,11 +34,23 @@ async function crearSesion(req, res) {
     if (!ok) return res.status(400).json({ codigo: "variables_incompletas", msg: "Faltan campos requeridos", faltantes });
 
     // Voz: del body o default por env. (TODO: decidir si la voz vive en la plantilla/empresa.)
+    // Velocidad del habla: override por llamada (body.velocidad) > config de la voz
+    // (voz.velocidad) > default global (env.defaultVoiceSpeed). El provider se usa
+    // para construir el voiceOverrides correcto en Ultravox.
     let voiceCode = env.defaultVoiceCode;
+    let voiceProvider = env.defaultVoiceProvider;
+    let velocidad = env.defaultVoiceSpeed;
     if (id_voz) {
       const voz = await agente.getVoz(id_voz, idEmpresa);
       if (!voz) return err(res, 400, "voz_invalida", "id_voz inexistente o inactiva");
       voiceCode = voz.voice_code;
+      if (voz.provider) voiceProvider = voz.provider;
+      if (voz.velocidad != null) velocidad = Number(voz.velocidad);
+    }
+    if (velocidadBody != null && velocidadBody !== "") {
+      const v = Number(velocidadBody);
+      if (!Number.isFinite(v)) return err(res, 400, "velocidad_invalida", "velocidad debe ser numerica");
+      velocidad = v;
     }
 
     // Tool: validación opcional del id_tool (tipo 'llamada'). El SET de funciones
@@ -97,6 +109,8 @@ async function crearSesion(req, res) {
       voice: voiceCode,
       sampleRate,
       selectedTools,
+      voiceProvider,
+      velocidad,
     });
 
     const apiVoz = new ApiVozModel();
