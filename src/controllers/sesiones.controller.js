@@ -12,6 +12,20 @@ const logger = require("../config/logger.js");
 
 const err = (res, http, codigo, msg) => res.status(http).json({ codigo, msg });
 
+// Elige el primer candidato con cupo libre. `candidatos` viene ordenado por
+// prioridad (principal primero, luego adicionales) y cada uno ya trae el
+// `voiceCode` valido en su cuenta Ultravox. `canal <= 0` = sin limite. `conteo` es
+// el mapa apiKey -> canales ocupados (store en memoria). Devuelve el candidato
+// elegido { apiKey, voiceCode } o null si todos estan al tope.
+function elegirCandidato(candidatos, conteo) {
+  for (const c of candidatos) {
+    if (!c.apiKey) continue;
+    const usados = conteo.get(c.apiKey) || 0;
+    if (c.canal <= 0 || usados < c.canal) return c;
+  }
+  return null;
+}
+
 // POST /v1/agente-voz/sesiones
 async function crearSesion(req, res) {
   const idEmpresa = req.apiVozEmpresa;
@@ -103,25 +117,40 @@ async function crearSesion(req, res) {
       backendUrl: env.toolsBackendUrl, // null = dejar URLs ai-you.io tal cual
     });
 
-    const { callId, joinUrl } = await ultravox.crearLlamadaServerWs({
-      apiKey: empresa.ultravox_api_key,
-      systemPrompt,
-      voice: voiceCode,
-      sampleRate,
-      selectedTools,
-      voiceProvider,
-      velocidad,
-    });
+    // Elegir la key Ultravox segun canales libres: principal primero, luego las
+    // adicionales. Como las voces de Ultravox son por cuenta, cada candidato lleva
+    // el voice_code valido en SU cuenta: la principal usa `voiceCode`; cada adicional
+    // usa su mapeo en voz_adicional si existe, y si esa voz no esta mapeada en la
+    // cuenta adicional cae al voice_code base (`voiceCode`). Cuando no se pidio
+    // id_voz se usa la voz default para todas las cuentas.
+    const adicionales = await agente.getApiKeysAdicionales(idEmpresa);
+    const mapaVozAdic = id_voz
+      ? new Map((await agente.getVozAdicionalPorVoz(id_voz, idEmpresa)).map((f) => [f.apikey_adicional_id, f.voice_code]))
+      : null;
 
-    const apiVoz = new ApiVozModel();
-    const webhook = await apiVoz.getWebhookConfig(idEmpresa);
+    const candidatos = [{ apiKey: empresa.ultravox_api_key, canal: Number(empresa.canal) || 0, voiceCode }];
+    for (const a of adicionales) {
+      const codeAdic = (mapaVozAdic && mapaVozAdic.get(a.id)) || voiceCode;
+      candidatos.push({ apiKey: a.api_key, canal: Number(a.canal) || 0, voiceCode: codeAdic });
+    }
 
+    // Se elige lo mas tarde posible (justo antes de crear la llamada) para que el
+    // conteo en memoria sea el mas fresco.
+    const elegido = elegirCandidato(candidatos, store.contarPorApiKey());
+    if (!elegido) {
+      res.set("Retry-After", "30");
+      return err(res, 503, "agente_indisponible", "Sin canales disponibles. Reintente en unos segundos.");
+    }
+    const { apiKey, voiceCode: voiceCodeFinal } = elegido;
+
+    // Reserva del canal: registramos la sesion como pendiente ANTES del await a
+    // Ultravox para que contarPorApiKey ya la incluya y dos requests concurrentes no
+    // elijan la misma key por encima de su cupo. purgarExpiradas la limpia si nunca
+    // conecta; si Ultravox falla la eliminamos aqui mismo.
     const registro = store.crear({
       session_id: sessionId,
       idEmpresa,
-      apiKey: empresa.ultravox_api_key,
-      callId,
-      joinUrl,
+      apiKey,
       idPlantilla: plantilla.id,
       codec,
       sampleRate,
@@ -129,6 +158,30 @@ async function crearSesion(req, res) {
       variables, // las variables originales que mando el cliente, para devolverlas en los webhooks
       tipificaciones,
       idTool: idToolFinal,
+    });
+
+    let callId, joinUrl;
+    try {
+      ({ callId, joinUrl } = await ultravox.crearLlamadaServerWs({
+        apiKey,
+        systemPrompt,
+        voice: voiceCodeFinal,
+        sampleRate,
+        selectedTools,
+        voiceProvider,
+        velocidad,
+      }));
+    } catch (e) {
+      store.eliminar(sessionId); // libera el canal reservado
+      throw e;
+    }
+
+    const apiVoz = new ApiVozModel();
+    const webhook = await apiVoz.getWebhookConfig(idEmpresa);
+
+    store.actualizar(sessionId, {
+      callId,
+      joinUrl,
       webhook: webhook ? { webhookUrl: webhook.webhook_url, webhookSecret: webhook.webhook_secret } : null,
     });
 

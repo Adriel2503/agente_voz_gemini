@@ -7,14 +7,43 @@ class AgenteVozModel {
     this.connection = dbConnection || pool;
   }
 
-  // empresa: key Ultravox (por empresa), gate de voz y tool por defecto.
+  // empresa: key Ultravox principal (por empresa), cupo de canales de esa key,
+  // gate de voz y tool por defecto.
   async getEmpresa(idEmpresa) {
     const [rows] = await this.connection.execute(
-      `SELECT id, ultravox_api_key, api_voz_activo, id_tool
+      `SELECT id, ultravox_api_key, canal, api_voz_activo, id_tool
        FROM empresa WHERE id = ? AND estado_registro = 1`,
       [idEmpresa]
     );
     return rows[0] || null;
+  }
+
+  // Keys Ultravox adicionales de la empresa, cada una con su cupo de canales
+  // concurrentes (`canal`). Se usan como desborde cuando la key principal se llena.
+  async getApiKeysAdicionales(idEmpresa) {
+    const [rows] = await this.connection.execute(
+      `SELECT id, api_key, canal
+       FROM ultravox_api_key_adicional
+       WHERE id_empresa = ? AND estado_registro = 1
+       ORDER BY id ASC`,
+      [idEmpresa]
+    );
+    return rows;
+  }
+
+  // voice_code de una voz dentro de cada cuenta Ultravox adicional de la empresa.
+  // Las voces de Ultravox son por cuenta, asi que la misma voz tiene otro code en
+  // cada key adicional. Devuelve [{ apikey_adicional_id, voice_code }] para mapear.
+  async getVozAdicionalPorVoz(idVoz, idEmpresa) {
+    const [rows] = await this.connection.execute(
+      `SELECT va.apikey_adicional_id, va.voice_code
+       FROM voz_adicional va
+       JOIN ultravox_api_key_adicional k ON k.id = va.apikey_adicional_id
+       WHERE va.id_voz = ? AND va.estado_registro = 1
+         AND k.id_empresa = ? AND k.estado_registro = 1`,
+      [idVoz, idEmpresa]
+    );
+    return rows;
   }
 
   // plantilla -> prompt + id_formato. Limitada a la empresa del token.

@@ -42,4 +42,16 @@ function purgarExpiradas(maxEdadMs = 30000) {
   }
 }
 
-module.exports = { crear, obtener, actualizar, eliminar, purgarExpiradas, nuevoSessionId };
+// Canales ocupados por cada apiKey Ultravox = sesiones activas (no finalizadas)
+// agrupadas por su apiKey. NOTA: en memoria = conteo por instancia. Si se escala a
+// N replicas, este tope NO es global (ver nota del store arriba).
+function contarPorApiKey() {
+  const conteo = new Map();
+  for (const s of sesiones.values()) {
+    if (!s.apiKey || s.estado === "finalizada") continue;
+    conteo.set(s.apiKey, (conteo.get(s.apiKey) || 0) + 1);
+  }
+  return conteo;
+}
+
+module.exports = { crear, obtener, actualizar, eliminar, purgarExpiradas, contarPorApiKey, nuevoSessionId };
