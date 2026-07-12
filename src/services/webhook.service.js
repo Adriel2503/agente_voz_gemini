@@ -28,9 +28,17 @@ async function enviarWebhook({ webhookUrl, webhookSecret }, event, payload) {
   }
 
   try {
-    await axios.post(webhookUrl, rawBody, { headers, timeout: 8000, validateStatus: () => true });
+    // validateStatus:true evita que axios lance por 4xx/5xx (no reventar la
+    // sesion por un webhook fallido), pero eso tambien lo hacia invisible: un
+    // 500 del integrador no caia en el catch y no quedaba ningun log. Se
+    // inspecciona la respuesta a mano para no perder esa señal.
+    const res = await axios.post(webhookUrl, rawBody, { headers, timeout: 8000, validateStatus: () => true });
+    if (res.status >= 300) {
+      logger.warn(`[webhook] ${event} -> ${webhookUrl} respondio HTTP ${res.status}`);
+    }
   } catch (error) {
-    // No reventar la sesion por un webhook fallido; el integrador puede reintentar via GET.
+    // Fallas de red (DNS, timeout, conexion rechazada): el integrador puede
+    // reconciliar via GET /sesiones/{id} o /transcripcion.
     logger.warn(`[webhook] fallo ${event} -> ${webhookUrl}: ${error.message}`);
   }
 }

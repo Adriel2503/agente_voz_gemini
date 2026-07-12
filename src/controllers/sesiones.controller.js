@@ -210,7 +210,15 @@ async function crearSesion(req, res) {
     }
 
     const apiVoz = new ApiVozModel();
-    const webhook = await apiVoz.getWebhookConfig(idEmpresa);
+    // El webhook es una feature secundaria (notificar al integrador): un blip
+    // de BD acá no debe tumbar la sesion cuando el motor de voz ya se armo
+    // bien. Se degrada a "sin webhook" y se sigue.
+    let webhook = null;
+    try {
+      webhook = await apiVoz.getWebhookConfig(idEmpresa);
+    } catch (e) {
+      logger.warn(`[sesiones] getWebhookConfig fallo (empresa=${idEmpresa}), sesion continua sin webhook: ${e.message}`);
+    }
 
     store.actualizar(sessionId, {
       callId,
@@ -233,7 +241,13 @@ async function crearSesion(req, res) {
     }
 
     const host = req.headers["x-forwarded-host"] || req.headers.host;
-    const rawToken = (req.headers["authorization"] || "").slice(7).trim();
+    // Mismo criterio que apiVozToken.middleware: Bearer o ?token=. Si el POST
+    // autentico por query, el slice(7) del header vacio dejaba ws_url con
+    // token= vacio y el WS rebotaba 401.
+    const header = req.headers["authorization"] || "";
+    const rawToken = header.startsWith("Bearer ")
+      ? header.slice(7).trim()
+      : (req.query.token || "").trim();
     const wsUrl = `wss://${host}/v1/sesiones/${registro.session_id}?token=${rawToken}`;
 
     return res.status(201).json({
