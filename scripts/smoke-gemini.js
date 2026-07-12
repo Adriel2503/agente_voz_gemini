@@ -73,18 +73,12 @@ async function main() {
       onerror: (e) => finalizar(false, `error WS: ${e?.message || e}`),
       onclose: (e) => { if (!terminado) finalizar(false, `WS cerrado: ${e?.reason || "sin motivo"}`); },
       onmessage: (msg) => {
+        // OJO: setupComplete puede llegar ANTES de que el await de connect()
+        // asigne `session` (carrera de microtasks). No usar session aca; solo
+        // marcar la bandera — el arranque real va despues del await.
         if (msg.setupComplete && !listo) {
           listo = true;
-          console.log("[smoke] setupComplete: mandando saludo + silencio 50fps");
-          session.sendRealtimeInput({ text: env.gemini.greetingTrigger });
-          tick = setInterval(() => {
-            if (terminado) return;
-            try {
-              session.sendRealtimeInput({
-                audio: { data: SILENCIO_16K.toString("base64"), mimeType: "audio/pcm;rate=16000" },
-              });
-            } catch (_) {}
-          }, 20);
+          console.log("[smoke] setupComplete recibido");
           return;
         }
         const sc = msg.serverContent;
@@ -105,6 +99,19 @@ async function main() {
       },
     },
   });
+
+  // Ya con `session` asignada: saludo + bomba de silencio a 50 fps (lo mismo
+  // que hace geminiEngine en una llamada real).
+  console.log("[smoke] mandando saludo + silencio 50fps");
+  session.sendRealtimeInput({ text: env.gemini.greetingTrigger });
+  tick = setInterval(() => {
+    if (terminado) return;
+    try {
+      session.sendRealtimeInput({
+        audio: { data: SILENCIO_16K.toString("base64"), mimeType: "audio/pcm;rate=16000" },
+      });
+    } catch (_) {}
+  }, 20);
 }
 
 main().catch((e) => {
