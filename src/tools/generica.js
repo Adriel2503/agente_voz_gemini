@@ -92,7 +92,7 @@ const genericaTools = [
     temporaryTool: {
       modelToolName: "agendar_cita",
       description:
-        "Registra la cita confirmada por el cliente. Llamar SOLO cuando el cliente confirmó explícitamente fecha, hora y tienda. Recibe: tienda (display name hablado al cliente, ej. 'CARSA Ate Porvenir'), agencia (nombre crudo de la sucursal del JSON de buscarSucursal o de la pre-cargada, ej. 'CARSA_ATE PORVENIR' — sirve para cruce con tabla brand), fecha en formato YYYY-MM-DD (ej. '2026-05-09') y hora en formato 24h HH:MM:SS (ej. '15:30:00').",
+        "Registra la cita confirmada por el cliente. Llamar SOLO cuando el cliente confirmó explícitamente fecha, hora y tienda. Recibe: tienda (display name hablado al cliente, ej. 'CARSA Ate Porvenir'), agencia (nombre crudo de la sucursal del JSON de buscarSucursal o de la pre-cargada, ej. 'CARSA_ATE PORVENIR' — sirve para cruce con tabla brand), fecha en formato YYYY-MM-DD (ej. '2026-05-09') y hora en formato 24h HH:MM:SS (ej. '15:30:00'). El sistema valida horario de tienda y que la hora no haya pasado: si responde ok:false, la cita NO quedó registrada — dile al cliente el 'mensaje' y ofrécele la 'sugerencia' {fecha, hora}. La cita existe únicamente si respondió ok:true.",
       timeout: "5s",
       http: {
         baseUrlPattern: "https://app-api.ai-you.io/api/crm/tools/llamadas/agendarCita",

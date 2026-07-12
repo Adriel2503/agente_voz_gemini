@@ -33,6 +33,39 @@ test("obtenerPlanesDisponibles ya no se declara al modelo", () => {
   assert.ok(!ejecutables.has("obtenerPlanesDisponibles"));
 });
 
+// El body del error del backend VA al modelo: el 422 de agendar_cita trae
+// {motivo, mensaje, sugerencia} y el agente se corrige con eso. Antes se
+// tiraba y al modelo le llegaba "HTTP 422" pelado.
+test("ejecutarTool reenvia el body del error del backend al modelo", async () => {
+  const http = require("node:http");
+  const { ejecutarTool } = require("../src/tools/geminiTools.js");
+  const rechazo = {
+    success: false,
+    motivo: "hora_pasada",
+    mensaje: "Esa hora ya pasó. Ofrecele al cliente 3 de la tarde.",
+    sugerencia: { fecha: "2026-07-14", hora: "15:00:00" },
+  };
+  const srv = http.createServer((req, res) => {
+    res.writeHead(422, { "content-type": "application/json" });
+    res.end(JSON.stringify(rechazo));
+  });
+  await new Promise((ok) => srv.listen(0, ok));
+  try {
+    const r = await ejecutarTool(
+      { url: `http://127.0.0.1:${srv.address().port}/x`, method: "POST", timeoutMs: 2000, staticParams: {} },
+      "agendar_cita",
+      { fecha: "2026-07-14", hora: "13:00:00" }
+    );
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.error, "HTTP 422");
+    assert.strictEqual(r.motivo, "hora_pasada");
+    assert.deepStrictEqual(r.sugerencia, rechazo.sugerencia);
+    assert.ok(r.mensaje.includes("3 de la tarde"));
+  } finally {
+    srv.close();
+  }
+});
+
 // hangUp es local: la declara el engine, y NO debe tener ejecutable HTTP (si
 // alguien la agregara a generica.js por error, el ejecutor haria un request).
 test("hangUp no sale de traducirTools: no es una tool HTTP", () => {

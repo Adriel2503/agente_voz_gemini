@@ -99,6 +99,14 @@ async function ejecutarTool(ejecutable, nombre, args) {
   } catch (e) {
     const status = e.response?.status;
     logger.warn(`[geminiTools] ${nombre} fallo${status ? ` (HTTP ${status})` : ""}: ${e.message}`);
+    // Si el backend explico el rechazo, ese body VA al modelo: un 422 de
+    // agendar_cita trae {motivo, mensaje, sugerencia} y el agente se corrige
+    // con eso ("esa hora ya paso, ofrecele las 3 de la tarde"). Tirarlo y
+    // devolver "HTTP 422" pelado deja al modelo sin nada con que reaccionar.
+    const detalle = e.response?.data;
+    if (detalle && typeof detalle === "object") {
+      return { ok: false, error: `HTTP ${status}`, ...detalle };
+    }
     return { ok: false, error: status ? `HTTP ${status}` : e.message };
   }
 }
