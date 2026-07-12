@@ -34,6 +34,12 @@ function actualizar(id, patch) {
 
 const eliminar = (id) => sesiones.delete(id);
 
+// Primera sesion que cumple el predicado (p.ej. buscar por callId).
+function buscar(pred) {
+  for (const s of sesiones.values()) if (pred(s)) return s;
+  return null;
+}
+
 // Limpia sesiones pendientes que nunca conectaron (ventana de 30s del HTML).
 function purgarExpiradas(maxEdadMs = 30000) {
   const ahora = Date.now();
@@ -54,4 +60,4 @@ function contarPorApiKey() {
   return conteo;
 }
 
-module.exports = { crear, obtener, actualizar, eliminar, purgarExpiradas, contarPorApiKey, nuevoSessionId };
+module.exports = { crear, obtener, actualizar, eliminar, buscar, purgarExpiradas, contarPorApiKey, nuevoSessionId };

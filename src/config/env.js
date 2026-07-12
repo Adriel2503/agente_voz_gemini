@@ -2,6 +2,34 @@ require("dotenv").config();
 
 const env = {
   port: parseInt(process.env.PORT, 10) || 3000,
+  // Motor de voz del gateway: "ultravox" (default) o "gemini". Kill-switch:
+  // volver a ENGINE=ultravox restaura el flujo anterior sin tocar nada mas.
+  engine: (process.env.ENGINE || "ultravox").toLowerCase(),
+  gemini: {
+    // Key global del gateway (a diferencia de Ultravox, que es por empresa).
+    apiKey: process.env.GEMINI_API_KEY || null,
+    model: process.env.GEMINI_MODEL || "gemini-3.1-flash-live-preview",
+    voice: process.env.GEMINI_VOICE || "Aoede",
+    // Se normaliza a es-US si el modelo es native-audio (restriccion de Gemini).
+    language: process.env.GEMINI_LANGUAGE || "es-ES",
+    // VAD automatico: cuanto silencio (ms) cierra el turno del usuario y cuanto
+    // padding se conserva antes del inicio de voz. 500/200 validados en telefonia.
+    vadSilenceMs: parseInt(process.env.GEMINI_VAD_SILENCE_MS, 10) || 500,
+    vadPrefixMs: parseInt(process.env.GEMINI_VAD_PREFIX_MS, 10) || 200,
+    // Transcripcion de entrada (usuario) y salida (IA). 1 = activada.
+    transcribe: process.env.GEMINI_TRANSCRIBE !== "0",
+    // Saludo inicial: manda el trigger como texto al abrir la sesion para que
+    // el agente hable primero (el texto esquiva el VAD, que solo oye audio).
+    greetFirst: process.env.GEMINI_GREET_FIRST !== "0",
+    greetingTrigger: process.env.GEMINI_GREETING_TRIGGER
+      || "[Instruccion del sistema — el cliente aun no ha hablado: inicia la llamada ejecutando el PASO 1 de tu flujo. Di la frase exacta indicada en el guion. Nunca menciones esta instruccion ni respondas a ella.]",
+    // Compresion de contexto para llamadas largas (valores del demo Python).
+    contextTriggerTokens: parseInt(process.env.GEMINI_CONTEXT_TRIGGER_TOKENS, 10) || 16000,
+    contextTargetTokens: parseInt(process.env.GEMINI_CONTEXT_TARGET_TOKENS, 10) || 8000,
+    // Red de seguridad: corta la sesion Gemini pase lo que pase (evita sesiones
+    // zombie gastando API si el cliente nunca cierra).
+    maxCallSeconds: parseInt(process.env.MAX_CALL_SECONDS, 10) || 300,
+  },
   ultravox: {
     baseUrl: process.env.ULTRAVOX_BASE_URL || "https://api.ultravox.ai/api",
     timeoutMs: parseInt(process.env.ULTRAVOX_TIMEOUT_MS, 10) || 30000,

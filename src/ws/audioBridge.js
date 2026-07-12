@@ -11,12 +11,16 @@ const WebSocket = require("ws");
 const { muLawToPcm16, pcm16ToMuLaw } = require("../lib/g711.js");
 const { enviarWebhook } = require("../services/webhook.service.js");
 const ultravox = require("../services/ultravox.service.js");
+const geminiEngine = require("./geminiEngine.js");
 const ApiVozModel = require("../models/apiVoz.model.js");
 const store = require("../sessions/store.js");
 const logger = require("../config/logger.js");
 const env = require("../config/env.js");
 
 function manejarConexion(asteriskWs, sesion) {
+  // Rama de motor: las sesiones creadas con ENGINE=gemini van al bridge de
+  // Gemini Live; el resto sigue el camino Ultravox original intacto.
+  if (sesion.engine === "gemini") return geminiEngine.manejarConexion(asteriskWs, sesion);
   const iniciadoEn = Date.now();
   store.actualizar(sesion.session_id, { conectado: true, estado: "conectada" });
 
