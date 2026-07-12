@@ -12,18 +12,33 @@ const resueltas = processTools(genericaTools, {
   backendUrl: null,
 });
 
-test("traduce las 5 tools HTTP y omite queryCorpus (built-in sin HTTP)", () => {
+test("traduce las 4 tools HTTP y omite queryCorpus (built-in sin HTTP)", () => {
   const { functionDeclarations, ejecutables } = traducirTools(resueltas);
   const nombres = functionDeclarations.map((f) => f.name).sort();
   assert.deepStrictEqual(nombres, [
     "agendar_cita",
     "buscarSucursal",
     "obtenerFechaHora",
-    "obtenerPlanesDisponibles",
     "tipificarLlamada",
   ]);
-  assert.strictEqual(ejecutables.size, 5);
+  assert.strictEqual(ejecutables.size, 4);
   assert.ok(!ejecutables.has("queryCorpus"));
+});
+
+// Regresion: apuntaba a /api/crm/tools/catalogo, ruta inexistente en app-api
+// (el catalogo vive en /api/crm/catalogo, con JWT). Devolvia 404 siempre.
+test("obtenerPlanesDisponibles ya no se declara al modelo", () => {
+  const { functionDeclarations, ejecutables } = traducirTools(resueltas);
+  assert.ok(!functionDeclarations.some((f) => f.name === "obtenerPlanesDisponibles"));
+  assert.ok(!ejecutables.has("obtenerPlanesDisponibles"));
+});
+
+// hangUp es local: la declara el engine, y NO debe tener ejecutable HTTP (si
+// alguien la agregara a generica.js por error, el ejecutor haria un request).
+test("hangUp no sale de traducirTools: no es una tool HTTP", () => {
+  const { functionDeclarations, ejecutables } = traducirTools(resueltas);
+  assert.ok(!functionDeclarations.some((f) => f.name === "hangUp"));
+  assert.ok(!ejecutables.has("hangUp"));
 });
 
 test("los parametros ESTATICOS no se exponen al modelo pero si al ejecutor", () => {
@@ -42,9 +57,9 @@ test("el ejecutor conserva URL, metodo y timeout de cada tool", () => {
   const tip = ejecutables.get("tipificarLlamada");
   assert.strictEqual(tip.method, "PUT");
   assert.ok(tip.url.includes("/llamadas/nuevaTipificacion"));
-  const planes = ejecutables.get("obtenerPlanesDisponibles");
-  assert.strictEqual(planes.method, "GET");
-  assert.strictEqual(planes.timeoutMs, 5000); // "5s"
+  const fechaHora = ejecutables.get("obtenerFechaHora");
+  assert.strictEqual(fechaHora.method, "POST");
+  assert.strictEqual(fechaHora.timeoutMs, 5000); // "5s"
   const cita = ejecutables.get("agendar_cita");
   assert.strictEqual(cita.method, "POST");
   assert.ok(cita.url.includes("/llamadas/agendarCita"));
@@ -73,8 +88,17 @@ test("parseTimeout: '5s' -> 5000, invalido -> default 8000", () => {
   assert.strictEqual(parseTimeout("rapido"), 8000);
 });
 
-test("tool sin parametros dinamicos no declara 'parameters' (obtenerPlanes)", () => {
-  const { functionDeclarations } = traducirTools(resueltas);
-  const planes = functionDeclarations.find((f) => f.name === "obtenerPlanesDisponibles");
-  assert.strictEqual(planes.parameters, undefined);
+// Ninguna tool generica cae hoy en este caso, pero la rama existe: Gemini
+// rechaza un functionDeclaration con "parameters" vacio.
+test("tool sin parametros dinamicos no declara 'parameters'", () => {
+  const { functionDeclarations } = traducirTools([
+    {
+      temporaryTool: {
+        modelToolName: "ping",
+        description: "Sin parametros",
+        http: { baseUrlPattern: "https://ejemplo/ping", httpMethod: "GET" },
+      },
+    },
+  ]);
+  assert.strictEqual(functionDeclarations[0].parameters, undefined);
 });

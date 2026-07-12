@@ -1,22 +1,17 @@
 // Tool genérica portada del voice-backend (aiyou/aiyou-voice-backend/src/tools/generica.js).
 // CommonJS. Los placeholders {{id_empresa}} y {{provider_call_id}} los resuelve processTools.
+//
+// NOTA: `obtenerPlanesDisponibles` se retiró. Venía copiada de la tool de Bitel
+// (tmp-server-mapping/tools/bitel.js) y apuntaba a GET /api/crm/tools/catalogo,
+// ruta que NO existe en app-api: el catálogo se monta como /api/crm/catalogo
+// detrás de authMiddleware, y saca el id_empresa del JWT (que las tools de voz
+// no tienen). Devolvía 404 en todas las llamadas, con ambos motores.
 const genericaTools = [
   {
     toolName: "queryCorpus",
     parameterOverrides: {
       corpus_id: "0d68b754-32d0-4c9d-966c-0e17aaeab8e5",
       max_results: 3,
-    },
-  },
-  {
-    temporaryTool: {
-      modelToolName: "obtenerPlanesDisponibles",
-      description: "Obtiene los planes disponibles",
-      timeout: "5s",
-      http: {
-        baseUrlPattern: "https://app-api.ai-you.io/api/crm/tools/catalogo",
-        httpMethod: "GET",
-      },
     },
   },
   {

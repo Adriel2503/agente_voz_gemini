@@ -7,9 +7,15 @@ producción telefónica de dos proyectos previos: el demo Python
 (`asterisk-bridge`, bombeo de audio y control de turnos).
 
 **Alcance:** conversación + transcripción + barge-in + saludo inicial +
-**las 5 tools HTTP** (tipificarLlamada, agendar_cita, buscarSucursal,
-obtenerPlanesDisponibles, obtenerFechaHora). Fuera de alcance: `queryCorpus`
-(RAG built-in de Ultravox, sin equivalente HTTP) y `hangUp` (ver §9).
+**las 4 tools HTTP** (tipificarLlamada, agendar_cita, buscarSucursal,
+obtenerFechaHora). Fuera de alcance: `queryCorpus` (RAG built-in de Ultravox,
+sin equivalente HTTP) y `hangUp` (ver §9).
+
+`obtenerPlanesDisponibles` se **retiró** de `generica.js`: estaba copiada de la
+tool de Bitel y apuntaba a `GET /api/crm/tools/catalogo`, ruta inexistente en
+app-api (el catálogo se monta en `/api/crm/catalogo`, detrás de `authMiddleware`
+y con el `id_empresa` sacado del JWT). Devolvía 404 en toda llamada, con ambos
+motores. Ninguna plantilla la invocaba.
 
 ---
 
@@ -150,6 +156,36 @@ continúe. Implementado en `src/tools/geminiTools.js`:
   del modelo (query params si es GET). Nunca lanza: ante error devuelve
   `{ok:false, error}` para que el agente pueda reaccionar.
 
+### `hangUp`: tool LOCAL, con drenaje
+
+`hangUp` no tiene HTTP — su efecto es sobre la sesión. Por eso no vive en
+`generica.js` sino que el engine **la inyecta siempre** (`TOOL_HANGUP`), igual
+que hacía `ultravox.service.js:86` para todas las empresas. Sin ella el agente
+se despide y la llamada queda abierta hasta que cuelgue el cliente o venza
+`MAX_CALL_SECONDS`.
+
+**Colgar = `cerrar()`.** No hace falta ningún mensaje nuevo hacia el integrador:
+`cerrar()` cierra **ambos** sockets, y el Asterisk del tercero cuelga la pata SIP
+al quedarse sin media. Es exactamente lo que pasaba con el `hangUp` de Ultravox
+(Ultravox cerraba su WS → `cerrar()` → `asteriskWs.close()`), así que el contrato
+ya está probado en producción.
+
+**Pero no se cierra en el acto.** El modelo dice la despedida y emite el
+`toolCall` enseguida, mientras ese audio todavía sale pautado a 50 fps desde
+`outQ`: cerrar ahí le corta la frase al cliente a mitad de palabra. El engine
+marca `colgarPendiente` y la bomba consulta `debeColgar(...)` en cada tick —
+cierra cuando `outQ` está vacía y Gemini lleva `COLA_MS` (300 ms) sin mandar
+audio, o al tope duro `HANGUP_MAX_MS` (10 s).
+
+**Y a propósito NO se responde el `functionCall`.** Un `{ok:true}` arrancaría un
+turno nuevo del modelo ("listo, gracias") → llegaría audio nuevo → el drenaje no
+convergería nunca. Sin respuesta, el modelo se calla y la cola drena limpio. Si
+en el mismo batch vienen otras tools, ésas sí se responden normal.
+
+Efecto colateral bueno: cuando cuelga el **cliente**, el agente puede tipificar y
+llamar `hangUp`, y el cierre dispara de inmediato en vez de esperar los 6 s de la
+ventana de gracia. `cerrar()` es idempotente, así que las dos rutas conviven.
+
 El flujo de negocio queda idéntico al de Ultravox: `tipificarLlamada` y
 `agendar_cita` pegan a los MISMOS endpoints de app-api (INSERT +
 auto-tipificación "CITA AGENDADA" incluidos), se capturan en memoria
@@ -269,15 +305,11 @@ el flujo público es idéntico).
 | Switch de motor (creación de sesión) | `src/controllers/sesiones.controller.js` |
 | Rama de motor en el WSS | `src/ws/audioBridge.js` (primera línea de `manejarConexion`) |
 | Config | `src/config/env.js` (bloque `engine` + `gemini`) |
-| Tests unitarios | `test/audioQueue.test.js`, `test/resample.test.js`, `test/geminiTools.test.js` |
+| Tests unitarios | `test/audioQueue.test.js`, `test/resample.test.js`, `test/geminiTools.test.js`, `test/hangup.test.js` |
 | Smoke contra Gemini real | `scripts/smoke-gemini.js` |
 
 ## 9. Pendiente (fases futuras)
 
-- **`hangUp`**: emular con una functionDeclaration local que dispare
-  `cerrar()` — hoy el agente no puede colgar por sí mismo (los prompts AiYou
-  la invocan en los flujos terminales; con Gemini el modelo no la ve declarada
-  y simplemente sigue el guion sin colgar).
 - **`queryCorpus`** (RAG nativo de Ultravox) no tiene equivalente directo:
   requiere solución aparte.
 - **Reconexión** con `sessionResumptionUpdate.newHandle` (sesiones > límite

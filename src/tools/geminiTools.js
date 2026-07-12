@@ -11,6 +11,22 @@ const logger = require("../config/logger.js");
 
 const TIMEOUT_DEFAULT_MS = 8000;
 
+// Tool LOCAL: no tiene HTTP, su efecto es sobre la sesion (colgar). Por eso no
+// vive en generica.js (catalogo de tools HTTP) sino que el engine la inyecta.
+// Paridad con ultravox.service.js:86, que hacia lo mismo para todas las
+// empresas: selectedTools: [{ toolName: "hangUp" }, ...selectedTools].
+// Sin `parameters`: Gemini rechaza un functionDeclaration con parameters vacio.
+const COLA_MS = 300; // silencio tras el ultimo audio para dar por drenada la cola
+const HANGUP_MAX_MS = 10000; // tope duro del drenaje
+
+const TOOL_HANGUP = {
+  name: "hangUp",
+  description:
+    "Finaliza la llamada telefonica. Invocala DESPUES de decir la frase de " +
+    "despedida y, si corresponde, despues de tipificar la llamada. Cuelga de " +
+    "verdad y es irreversible: no la uses para pausar ni para cambiar de tema.",
+};
+
 // "5s" -> 5000. Formato de timeout que usan las definiciones de Ultravox.
 function parseTimeout(t) {
   const m = /^(\d+)s$/.exec(String(t || "").trim());
@@ -87,4 +103,20 @@ async function ejecutarTool(ejecutable, nombre, args) {
   }
 }
 
-module.exports = { traducirTools, ejecutarTool, parseTimeout };
+// Decide si ya se puede cerrar tras un hangUp del agente. El modelo dice la
+// despedida y EMITE el toolCall enseguida, pero ese audio todavia esta en outQ
+// saliendo pautado a 50 fps: cerrar en el instante del toolCall le corta la
+// frase al cliente a mitad de palabra. Se drena primero.
+//   - `outQPendiente`: bytes que quedan en outQ.
+//   - `ultimoAudioEn`: ts del ultimo chunk que mando Gemini (puede seguir
+//     llegando audio despues del toolCall).
+//   - `limite`: tope duro, por si Gemini nunca deja de hablar.
+// Funcion pura para poder testearla sin levantar un WebSocket.
+function debeColgar({ colgarPendiente, outQPendiente, ultimoAudioEn, ahora, limite }) {
+  if (!colgarPendiente) return false;
+  if (ahora >= limite) return true; // tope duro: se cierra igual
+  if (outQPendiente > 0) return false; // todavia queda despedida por entregar
+  return ahora - ultimoAudioEn >= COLA_MS; // silencio sostenido = drenado
+}
+
+module.exports = { traducirTools, ejecutarTool, parseTimeout, debeColgar, TOOL_HANGUP, COLA_MS, HANGUP_MAX_MS };

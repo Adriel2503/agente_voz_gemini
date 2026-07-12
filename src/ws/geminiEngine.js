@@ -21,7 +21,7 @@ const WebSocket = require("ws");
 const { muLawToPcm16, pcm16ToMuLaw } = require("../lib/g711.js");
 const { AudioQueue } = require("../lib/audioQueue.js");
 const { upsample8to16, Downsampler24a8, Downsampler24a16 } = require("../lib/resample.js");
-const { traducirTools, ejecutarTool } = require("../tools/geminiTools.js");
+const { traducirTools, ejecutarTool, debeColgar, TOOL_HANGUP, HANGUP_MAX_MS } = require("../tools/geminiTools.js");
 const { enviarWebhook } = require("../services/webhook.service.js");
 const ApiVozModel = require("../models/apiVoz.model.js");
 const store = require("../sessions/store.js");
@@ -83,7 +83,11 @@ async function manejarConexion(asteriskWs, sesion) {
 
   const cfg = sesion.geminiConfig || {};
   // Tools: declaraciones para Gemini + mapa de ejecucion HTTP (Fase 2).
+  // hangUp se inyecta aparte: es local (sin HTTP) y va siempre, como hacia
+  // ultravox.service.js. Sin ella el agente se despide y la llamada queda
+  // abierta hasta que cuelgue el cliente o venza MAX_CALL_SECONDS.
   const { functionDeclarations, ejecutables } = traducirTools(cfg.selectedTools || []);
+  functionDeclarations.push(TOOL_HANGUP);
   const esMulaw = sesion.codec === "mulaw_8k";
   // Frame de 20 ms del lado cliente: 320 B @ 8 kHz o 640 B @ 16 kHz.
   const frameBytes = sesion.sampleRate === 8000 ? 320 : 640;
@@ -101,6 +105,12 @@ async function manejarConexion(asteriskWs, sesion) {
   let agenteHablando = false;
   let tickTimer = null;
   let maxCallTimer = null;
+
+  // Colgado pedido por el agente (tool hangUp): no se cierra en el acto, se
+  // drena outQ para no cortarle la despedida al cliente (ver debeColgar).
+  let colgarPendiente = false;
+  let colgarLimite = 0;
+  let ultimoAudioEn = 0;
 
   // Transcripcion acumulada por turno (los fragmentos llegan incrementales).
   let turnoUser = "";
@@ -195,6 +205,18 @@ async function manejarConexion(asteriskWs, sesion) {
       if (nombre === "tipificarLlamada") capturarTipificacion(args);
       if (nombre === "agendar_cita") capturarAgendamiento(args);
 
+      // hangUp: tool LOCAL, no hay HTTP que ejecutar. Se marca y la bomba
+      // cierra cuando termine de entregar la despedida (debeColgar).
+      // A PROPOSITO no se responde el functionCall: un {ok:true} arrancaria un
+      // turno nuevo del modelo ("listo, gracias"), llegaria audio nuevo y el
+      // drenaje no convergeria nunca. Sin respuesta, el modelo se calla.
+      if (nombre === "hangUp") {
+        colgarPendiente = true;
+        colgarLimite = Date.now() + HANGUP_MAX_MS;
+        logger.info(`[gemini] hangUp del agente sesion=${sesion.session_id}: drenando audio antes de cerrar`);
+        continue;
+      }
+
       const ejecutable = ejecutables.get(nombre);
       const response = ejecutable
         ? await ejecutarTool(ejecutable, nombre, args)
@@ -202,7 +224,8 @@ async function manejarConexion(asteriskWs, sesion) {
       if (!ejecutable) logger.warn(`[gemini] toolCall a tool no declarada: ${nombre}`);
       functionResponses.push({ id: c.id, name: nombre, response });
     }
-    if (cerrado || !session) return;
+    // Vacio = el batch era solo hangUp: no hay nada que responder.
+    if (cerrado || !session || functionResponses.length === 0) return;
     try {
       session.sendToolResponse({ functionResponses });
     } catch (e) {
@@ -389,6 +412,19 @@ async function manejarConexion(asteriskWs, sesion) {
         asteriskWs.send(esMulaw ? pcm16ToMuLaw(out) : out);
         framesWritten++;
       }
+
+      // El agente pidio colgar: cerrar recien cuando termino de sonar su
+      // despedida (outQ vacia y Gemini dejo de mandar audio), o al tope duro.
+      if (colgarPendiente) {
+        const cerrarYa = debeColgar({
+          colgarPendiente,
+          outQPendiente: outQ.length,
+          ultimoAudioEn,
+          ahora: Date.now(),
+          limite: colgarLimite,
+        });
+        if (cerrarYa) cerrar("hangup_agente");
+      }
     }, TICK_MS);
   };
 
@@ -452,6 +488,7 @@ async function manejarConexion(asteriskWs, sesion) {
         const pcm24k = Buffer.from(p.inlineData.data, "base64");
         audioMsgsDown++;
         bytesDown += pcm24k.length;
+        ultimoAudioEn = Date.now(); // el drenaje de hangUp espera a que esto se aquiete
         outQ.push(downsampler.process(pcm24k));
         if (outQ.length > OUT_Q_MAX_BYTES) {
           logger.warn(`[gemini] outQ supero el tope (${outQ.length}B); vaciando sesion=${sesion.session_id}`);
