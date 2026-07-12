@@ -6,10 +6,10 @@ producción telefónica de dos proyectos previos: el demo Python
 (`gemini_live`, configuración de la sesión Live) y el puente Go
 (`asterisk-bridge`, bombeo de audio y control de turnos).
 
-**Alcance MVP (sin tools):** conversación + transcripción + barge-in +
-saludo inicial. Las tools (tipificar, agendar, buscarSucursal, queryCorpus)
-quedan para la Fase 2 — la llamada conversa pero **no tipifica ni ejecuta
-acciones**.
+**Alcance:** conversación + transcripción + barge-in + saludo inicial +
+**las 5 tools HTTP** (tipificarLlamada, agendar_cita, buscarSucursal,
+obtenerPlanesDisponibles, obtenerFechaHora). Fuera de alcance: `queryCorpus`
+(RAG built-in de Ultravox, sin equivalente HTTP) y `hangUp` (ver §9).
 
 ---
 
@@ -131,6 +131,36 @@ Python, mismos campos camelCase:
 | `realtimeInputConfig` | VAD automático: `silenceDurationMs`/`prefixPaddingMs` de env, `START_OF_ACTIVITY_INTERRUPTS` (barge-in server-side) |
 | `inputAudioTranscription` / `outputAudioTranscription` | activadas si `GEMINI_TRANSCRIBE=1` |
 | `contextWindowCompression` | trigger 16000 / target 8000 tokens (llamadas largas) |
+| `tools` | `functionDeclarations` traducidas desde las tools genéricas (ver "Tools" abajo) |
+
+### Tools: el gateway EJECUTA (diferencia clave con Ultravox)
+
+Con Ultravox el motor ejecutaba el HTTP de cada tool y el gateway solo recibía
+el aviso `toolUsed`. Con Gemini el modelo emite un `toolCall` y **el gateway
+ejecuta el HTTP y le responde** (`sendToolResponse`) para que el agente
+continúe. Implementado en `src/tools/geminiTools.js`:
+
+- **`traducirTools(selectedTools)`** — convierte cada `temporaryTool` (ya
+  resuelta por `processTools`) en: (a) una `functionDeclaration` para Gemini
+  con SOLO los parámetros dinámicos, y (b) un "ejecutable"
+  `{url, method, timeoutMs, staticParams}`. Los estáticos (`session_id`,
+  `id_empresa`) no se exponen al modelo: se inyectan al ejecutar. `queryCorpus`
+  (built-in sin HTTP) se omite con un log.
+- **`ejecutarTool(...)`** — hace el HTTP (axios) con body = estáticos + args
+  del modelo (query params si es GET). Nunca lanza: ante error devuelve
+  `{ok:false, error}` para que el agente pueda reaccionar.
+
+El flujo de negocio queda idéntico al de Ultravox: `tipificarLlamada` y
+`agendar_cita` pegan a los MISMOS endpoints de app-api (INSERT +
+auto-tipificación "CITA AGENDADA" incluidos), se capturan en memoria
+(`tipificacionFinal`/`agendamientoFinal`), se emite `tool_call` al integrador
+y el webhook `session.tool_call`.
+
+**Ventana de gracia**: al colgar el caller (`session_end` o cierre del WSS) se
+avisa al agente ("tipifica la llamada") y se espera hasta
+`GRACIA_TIPIFICACION_MS` (default 6000) a que la tipificación aparezca en
+memoria o BD antes de cerrar — el relleno de silencio mantiene vivo el stream
+para que Gemini pueda responder. Sin tools declaradas, cierre directo.
 
 ### Saludo inicial
 
@@ -149,6 +179,8 @@ instrucción. Configurable por env.
 | `inputTranscription.text` | acumula turno usuario → `transcript_partial` rol usuario |
 | `interrupted` | **barge-in**: `outQ.clear()` + `playback_clear_buffer` al cliente |
 | `turnComplete` / `generationComplete` | `transcript_final` + `agent_stopped_speaking` |
+| `toolCall.functionCalls[]` | ejecutar HTTP → `sendToolResponse` + `tool_call` al integrador + webhook |
+| `toolCallCancellation` | barge-in con tools en vuelo: se loguea (Gemini las cancela) |
 | `goAway` | cierre (`gemini_go_away`) |
 | `sessionResumptionUpdate` | se traza el handle (reconexión = Fase 2) |
 
@@ -158,9 +190,8 @@ Ultravox.
 
 ### Mensajes del cliente (mismo switch que Ultravox)
 
-`session_end` → cierre directo (sin ventana de gracia: no hay tipificación
-en el MVP) · `ping` → `pong` · `user_text` → `sendRealtimeInput({text})` ·
-`dtmf` → no-op.
+`session_end` → ventana de gracia para tipificación y cierre · `ping` →
+`pong` · `user_text` → `sendRealtimeInput({text})` · `dtmf` → no-op.
 
 ---
 
@@ -234,21 +265,22 @@ el flujo público es idéntico).
 | Bridge de audio + sesión Live + eventos | `src/ws/geminiEngine.js` |
 | Cola de frames (head-offset + compactación) | `src/lib/audioQueue.js` |
 | Resampling 8↔16 / 24→8 / 24→16 (con carry) | `src/lib/resample.js` |
+| Traducción y ejecución de tools | `src/tools/geminiTools.js` |
 | Switch de motor (creación de sesión) | `src/controllers/sesiones.controller.js` |
 | Rama de motor en el WSS | `src/ws/audioBridge.js` (primera línea de `manejarConexion`) |
 | Config | `src/config/env.js` (bloque `engine` + `gemini`) |
-| Tests unitarios | `test/audioQueue.test.js`, `test/resample.test.js` |
+| Tests unitarios | `test/audioQueue.test.js`, `test/resample.test.js`, `test/geminiTools.test.js` |
 | Smoke contra Gemini real | `scripts/smoke-gemini.js` |
 
-## 9. Fase 2 (pendiente)
+## 9. Pendiente (fases futuras)
 
-- **Tools**: traducir `temporaryTool` → `functionDeclarations`; con Gemini el
-  gateway **ejecuta** el HTTP de la tool (`toolCall` → fetch → `toolResponse`),
-  a diferencia de Ultravox que lo ejecutaba él. Incluye `tipificarLlamada` y
-  `agendar_cita` (hoy la llamada no tipifica) y la ventana de gracia.
-- **Reconexión** con `sessionResumptionUpdate.newHandle` (sesiones > límite
-  de Gemini) saltando el greet al reanudar.
+- **`hangUp`**: emular con una functionDeclaration local que dispare
+  `cerrar()` — hoy el agente no puede colgar por sí mismo (los prompts AiYou
+  la invocan en los flujos terminales; con Gemini el modelo no la ve declarada
+  y simplemente sigue el guion sin colgar).
 - **`queryCorpus`** (RAG nativo de Ultravox) no tiene equivalente directo:
   requiere solución aparte.
+- **Reconexión** con `sessionResumptionUpdate.newHandle` (sesiones > límite
+  de Gemini) saltando el greet al reanudar.
 - **Voces por empresa**: mapear `voz.provider='gemini'` si se necesita
   granularidad (hoy la voz es global).

@@ -21,6 +21,7 @@ const WebSocket = require("ws");
 const { muLawToPcm16, pcm16ToMuLaw } = require("../lib/g711.js");
 const { AudioQueue } = require("../lib/audioQueue.js");
 const { upsample8to16, Downsampler24a8, Downsampler24a16 } = require("../lib/resample.js");
+const { traducirTools, ejecutarTool } = require("../tools/geminiTools.js");
 const { enviarWebhook } = require("../services/webhook.service.js");
 const ApiVozModel = require("../models/apiVoz.model.js");
 const store = require("../sessions/store.js");
@@ -47,8 +48,10 @@ function normalizarLenguaje(lang, model) {
 // Config de la sesion Live (port de session.py::_build_config, mismos campos
 // camelCase). VAD automatico con interrupcion (barge-in server-side),
 // transcripcion en ambas direcciones y compresion de contexto.
-function construirLiveConfig(geminiConfig) {
+// `functionDeclarations` (opcional): tools traducidas por geminiTools.js.
+function construirLiveConfig(geminiConfig, functionDeclarations = []) {
   return {
+    ...(functionDeclarations.length ? { tools: [{ functionDeclarations }] } : {}),
     systemInstruction: geminiConfig.systemPrompt,
     responseModalities: ["AUDIO"],
     speechConfig: {
@@ -79,6 +82,8 @@ async function manejarConexion(asteriskWs, sesion) {
   store.actualizar(sesion.session_id, { conectado: true, estado: "conectada" });
 
   const cfg = sesion.geminiConfig || {};
+  // Tools: declaraciones para Gemini + mapa de ejecucion HTTP (Fase 2).
+  const { functionDeclarations, ejecutables } = traducirTools(cfg.selectedTools || []);
   const esMulaw = sesion.codec === "mulaw_8k";
   // Frame de 20 ms del lado cliente: 320 B @ 8 kHz o 640 B @ 16 kHz.
   const frameBytes = sesion.sampleRate === 8000 ? 320 : 640;
@@ -91,6 +96,8 @@ async function manejarConexion(asteriskWs, sesion) {
   let session = null; // sesion Live del SDK
   let listo = false; // setupComplete recibido: arrancan las bombas
   let cerrado = false;
+  let finalizando = false;
+  let hangupAvisado = false;
   let agenteHablando = false;
   let tickTimer = null;
   let maxCallTimer = null;
@@ -134,6 +141,75 @@ async function manejarConexion(asteriskWs, sesion) {
     turnoIA = "";
   };
 
+  // Captura la tipificacion elegida por el agente (mismo criterio que el
+  // camino Ultravox): el catalogo sesion.tipificaciones mapea id -> nombre.
+  const capturarTipificacion = (args) => {
+    const idTip = Number(args?.id_tipificacion_llamada);
+    if (!Number.isInteger(idTip) || idTip <= 0) {
+      logger.warn(`[gemini] tipificarLlamada sin id valido sesion=${sesion.session_id} args=${JSON.stringify(args)}`);
+      return;
+    }
+    const cat = (sesion.tipificaciones || []).find((t) => Number(t.id) === idTip) || null;
+    sesion.tipificacionFinal = {
+      id: idTip,
+      nombre: cat?.nombre || null,
+      equivalencia: cat?.equivalencia ?? null,
+      codigo_homologacion: cat?.codigo_homologacion_api_agente ?? null,
+    };
+    logger.info(`[gemini] tipificacion capturada sesion=${sesion.session_id} id=${idTip} nombre="${cat?.nombre || ""}"`);
+  };
+
+  // Captura la cita agendada (tool agendar_cita). La persistencia en BD la
+  // hace app-api al ejecutarse la tool; aqui solo estado en memoria para el
+  // webhook session.ended y la transcripcion REST.
+  const capturarAgendamiento = (args) => {
+    const tienda = (args?.tienda ?? "").toString().trim() || null;
+    const fecha = (args?.fecha ?? "").toString().trim() || null;
+    const hora = (args?.hora ?? "").toString().trim() || null;
+    const agencia = (args?.agencia ?? "").toString().trim() || null;
+    if (!tienda || !fecha || !hora) {
+      logger.warn(`[gemini] agendar_cita incompleto sesion=${sesion.session_id} args=${JSON.stringify(args)}`);
+      return;
+    }
+    sesion.agendamientoFinal = { tienda, agencia, fecha, hora };
+    logger.info(`[gemini] agendamiento capturado sesion=${sesion.session_id} tienda="${tienda}" ${fecha} ${hora}`);
+  };
+
+  // Ejecuta los toolCalls del modelo: el gateway hace el HTTP (a diferencia de
+  // Ultravox, que lo ejecutaba por su cuenta) y devuelve el resultado con
+  // sendToolResponse para que el agente continue hablando.
+  const manejarToolCalls = async (calls) => {
+    const functionResponses = [];
+    for (const c of calls) {
+      const nombre = c.name;
+      const args = c.args || {};
+      logger.info(`[gemini] tool del agente sesion=${sesion.session_id} name=${nombre} args=${JSON.stringify(args)}`);
+      enviarAsterisk({ type: "tool_call", name: nombre, args });
+      if (sesion.webhook) {
+        enviarWebhook(sesion.webhook, "session.tool_call", {
+          session_id: sesion.session_id,
+          variables: sesion.variables || {},
+          tool: { name: nombre, args },
+        });
+      }
+      if (nombre === "tipificarLlamada") capturarTipificacion(args);
+      if (nombre === "agendar_cita") capturarAgendamiento(args);
+
+      const ejecutable = ejecutables.get(nombre);
+      const response = ejecutable
+        ? await ejecutarTool(ejecutable, nombre, args)
+        : { ok: false, error: `tool desconocida: ${nombre}` };
+      if (!ejecutable) logger.warn(`[gemini] toolCall a tool no declarada: ${nombre}`);
+      functionResponses.push({ id: c.id, name: nombre, response });
+    }
+    if (cerrado || !session) return;
+    try {
+      session.sendToolResponse({ functionResponses });
+    } catch (e) {
+      logger.warn(`[gemini] sendToolResponse: ${e.message}`);
+    }
+  };
+
   const cerrar = (motivo) => {
     if (cerrado) return;
     cerrado = true;
@@ -156,12 +232,53 @@ async function manejarConexion(asteriskWs, sesion) {
     outQ.clear();
 
     (async () => {
+      const apiVoz = new ApiVozModel();
+
+      // Respaldo: la tool tipificarLlamada persiste en BD via app-api; si el
+      // toolCall no llego a capturarse en memoria, la leemos de ahi (mismo
+      // mecanismo que el camino Ultravox).
+      if (!sesion.tipificacionFinal) {
+        try {
+          const idTip = await apiVoz.getIdTipificacionBySession(sesion.session_id);
+          if (idTip) {
+            const cat = (sesion.tipificaciones || []).find((t) => Number(t.id) === Number(idTip)) || null;
+            sesion.tipificacionFinal = {
+              id: Number(idTip),
+              nombre: cat?.nombre || null,
+              equivalencia: cat?.equivalencia ?? null,
+              codigo_homologacion: cat?.codigo_homologacion_api_agente ?? null,
+            };
+            logger.info(`[gemini] tipificacion recuperada de BD sesion=${sesion.session_id} id=${idTip}`);
+          }
+        } catch (e) {
+          logger.warn(`[gemini] leer tipificacion BD: ${e.message}`);
+        }
+      }
+      if (!sesion.agendamientoFinal) {
+        try {
+          const cita = await apiVoz.getAgendamientoBySession(sesion.session_id);
+          if (cita) {
+            sesion.agendamientoFinal = {
+              tienda: cita.tienda ?? null,
+              agencia: cita.agencia ?? null,
+              fecha: cita.fecha ?? null,
+              hora: cita.hora ?? null,
+            };
+            logger.info(`[gemini] agendamiento recuperado de BD sesion=${sesion.session_id}`);
+          }
+        } catch (e) {
+          logger.warn(`[gemini] leer agendamiento BD: ${e.message}`);
+        }
+      }
+
       try {
-        await new ApiVozModel().upsertSesion(sesion.idEmpresa, {
+        await apiVoz.upsertSesion(sesion.idEmpresa, {
           session_id: sesion.session_id,
           estado: "ended",
           motivo_fin: motivo,
           duracion_segundos: duracionSegundos,
+          id_tipificacion: sesion.tipificacionFinal?.id || null,
+          tipificacion: sesion.tipificacionFinal || null,
           // Trazabilidad del motor sin cambio de schema (columna metadata jsonb).
           metadata: { ...(sesion.metadata || {}), motor: "gemini" },
           fecha_fin: new Date().toISOString(),
@@ -174,11 +291,64 @@ async function manejarConexion(asteriskWs, sesion) {
           session_id: sesion.session_id,
           metadata: sesion.metadata,
           variables: sesion.variables || {},
-          resumen: { duracion_segundos: duracionSegundos, tipificacion: null, agendamiento: null },
+          resumen: {
+            duracion_segundos: duracionSegundos,
+            tipificacion: sesion.tipificacionFinal || null,
+            agendamiento: sesion.agendamientoFinal || null,
+          },
         });
       }
       store.eliminar(sesion.session_id);
     })();
+  };
+
+  // Al colgar el caller, avisa al agente para que tipifique antes del cierre.
+  // El relleno de silencio mantiene vivo el stream aunque el cliente ya no
+  // mande audio, asi Gemini puede responder y disparar tipificarLlamada.
+  const avisarHangup = () => {
+    if (hangupAvisado || !session) return;
+    hangupAvisado = true;
+    try {
+      session.sendRealtimeInput({
+        text: "El usuario ha colgado la llamada. Tipifica la llamada con la informacion recopilada.",
+      });
+    } catch (e) {
+      logger.warn(`[gemini] avisarHangup: ${e.message}`);
+    }
+  };
+
+  // Cierre por colgado del caller con ventana de gracia (port del camino
+  // Ultravox): espera a que el agente tipifique (memoria o BD) o a que se
+  // agote GRACIA_TIPIFICACION_MS. Sin tools declaradas no hay nada que
+  // esperar: cierre directo.
+  const finalizarConGracia = (motivo) => {
+    if (cerrado || finalizando) return;
+    finalizando = true;
+    const graciaMs = ejecutables.size > 0 ? env.graciaTipificacionMs || 0 : 0;
+    if (graciaMs <= 0) {
+      cerrar(motivo);
+      return;
+    }
+    avisarHangup();
+    logger.info(`[gemini] esperando tipificacion (gracia ${graciaMs}ms) sesion=${sesion.session_id} motivo=${motivo}`);
+    const apiVoz = new ApiVozModel();
+    const limite = Date.now() + graciaMs;
+    const tick = async () => {
+      if (cerrado) return;
+      let listoTip = !!sesion.tipificacionFinal || Date.now() >= limite;
+      if (!listoTip) {
+        try {
+          if (await apiVoz.getIdTipificacionBySession(sesion.session_id)) listoTip = true;
+        } catch (_) {}
+      }
+      if (cerrado) return;
+      if (listoTip) {
+        cerrar(motivo);
+        return;
+      }
+      setTimeout(tick, 500);
+    };
+    setTimeout(tick, 500);
   };
 
   store.actualizar(sesion.session_id, { cerrar }); // para POST /terminar
@@ -228,8 +398,20 @@ async function manejarConexion(asteriskWs, sesion) {
 
     if (msg.setupComplete) {
       listo = true;
-      logger.info(`[gemini] sesion lista sesion=${sesion.session_id} model=${cfg.model}`);
+      logger.info(`[gemini] sesion lista sesion=${sesion.session_id} model=${cfg.model} tools=${functionDeclarations.length}`);
       arrancarBombas();
+      return;
+    }
+
+    // El modelo invoco tools: el gateway las ejecuta y le responde (async,
+    // sin bloquear el resto de eventos).
+    if (msg.toolCall?.functionCalls?.length) {
+      manejarToolCalls(msg.toolCall.functionCalls);
+      return;
+    }
+    if (msg.toolCallCancellation?.ids?.length) {
+      // Barge-in mientras habia tools en vuelo: Gemini las cancela solo.
+      logger.info(`[gemini] toolCallCancellation ids=${msg.toolCallCancellation.ids.join(",")}`);
       return;
     }
 
@@ -317,9 +499,8 @@ async function manejarConexion(asteriskWs, sesion) {
     try { ctrl = JSON.parse(data.toString()); } catch { return; }
     switch (ctrl.type) {
       case "session_end":
-        // Sin tools en el MVP no hay tipificacion que esperar: cierre directo.
         logger.info(`[gemini] session_end del cliente sesion=${sesion.session_id} payload=${JSON.stringify(ctrl)}`);
-        cerrar(ctrl.motivo || "hangup_caller");
+        finalizarConGracia(ctrl.motivo || "hangup_caller");
         break;
       case "ping":
         enviarAsterisk({ type: "pong" });
@@ -339,7 +520,7 @@ async function manejarConexion(asteriskWs, sesion) {
     }
   });
 
-  asteriskWs.on("close", () => cerrar("asterisk_close"));
+  asteriskWs.on("close", () => finalizarConGracia("asterisk_close"));
   asteriskWs.on("error", (e) => { logger.warn(`[gemini] asterisk error: ${e.message}`); cerrar("asterisk_error"); });
 
   // ---- Abrir la sesion Gemini Live ----
@@ -349,7 +530,7 @@ async function manejarConexion(asteriskWs, sesion) {
     const ai = new GoogleGenAI({ apiKey: env.gemini.apiKey });
     session = await ai.live.connect({
       model: cfg.model,
-      config: construirLiveConfig(cfg),
+      config: construirLiveConfig(cfg, functionDeclarations),
       callbacks: {
         onopen: () => {
           store.actualizar(sesion.session_id, { estado: "en_curso" });
