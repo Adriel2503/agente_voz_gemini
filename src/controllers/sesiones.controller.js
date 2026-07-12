@@ -4,7 +4,7 @@ const ultravox = require("../services/ultravox.service.js");
 const gemini = require("../services/gemini.service.js");
 const { enviarWebhook } = require("../services/webhook.service.js");
 const store = require("../sessions/store.js");
-const { renderPromptConFeriados } = require("../lib/prompt.js");
+const { renderPromptConFeriados, variablesSinResolver } = require("../lib/prompt.js");
 const { processTools } = require("../tools/processTools.js");
 const { cargarTiendas } = require("../services/sucursales.service.js");
 const genericaTools = require("../tools/generica.js");
@@ -112,6 +112,18 @@ async function crearSesion(req, res) {
     }
 
     const systemPrompt = await renderPromptConFeriados(promptPlantilla, varsPrompt);
+
+    // Los {{...}} que no se resolvieron quedan LITERALES en el prompt y el
+    // agente termina pronunciandolos ("Que tenga buenas tardes, nombre corto").
+    // No se rompe la llamada por esto, pero tiene que verse en el log.
+    const huerfanas = variablesSinResolver(systemPrompt);
+    if (huerfanas.length) {
+      logger.warn(
+        `[sesiones] plantilla con ${huerfanas.length} variable(s) sin resolver ` +
+          `(el agente puede leerlas en voz alta) empresa=${idEmpresa}: ${huerfanas.join(", ")}`
+      );
+    }
+
     const sampleRate = codec === "mulaw_8k" ? 8000 : 16000;
 
     // Generamos el session_id aqui para inyectarlo como static param de las tools.
