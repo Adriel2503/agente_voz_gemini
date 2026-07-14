@@ -11,7 +11,12 @@ const genericaTools = require("../tools/generica.js");
 const env = require("../config/env.js");
 const logger = require("../config/logger.js");
 
-const err = (res, http, codigo, msg) => res.status(http).json({ codigo, msg });
+// Ademas de responder, deja rastro: un rechazo silencioso aqui = llamada que
+// suena sin IA del otro lado y nadie sabe por que.
+const err = (res, http, codigo, msg) => {
+  logger.warn(`[sesiones] RECHAZADO ${http} ${codigo}: ${msg}`);
+  return res.status(http).json({ codigo, msg });
+};
 
 // Motor de voz activo del gateway (env ENGINE). El codigo Ultravox queda
 // intacto como kill-switch: ENGINE=ultravox restaura el flujo anterior.
@@ -37,6 +42,11 @@ async function crearSesion(req, res) {
   const idEmpresa = req.apiVozEmpresa;
   const { id_plantilla, id_voz, id_tool, variables = {}, codec = "pcm_s16le_16k", metadata = null, velocidad: velocidadBody = null } = req.body || {};
 
+  // Traza de TODO intento de sesion: si el integrador lanza N llamadas y aqui
+  // aparecen menos de N POSTs, la perdida esta de su lado (marcador/Asterisk),
+  // no en el gateway. El telefono ayuda a cruzar contra su reporte de campana.
+  logger.info(`[sesiones] POST /sesiones empresa=${idEmpresa} plantilla=${id_plantilla} telefono=${variables?.telefono || "?"} activas=${store.contarPorApiKey().size ? [...store.contarPorApiKey().values()].reduce((a, b) => a + b, 0) : 0}`);
+
   if (!id_plantilla) return err(res, 400, "plantilla_invalida", "id_plantilla requerido");
 
   const agente = new AgenteVozModel();
@@ -53,7 +63,10 @@ async function crearSesion(req, res) {
 
     const campos = await agente.getFormatoCampos(plantilla.id_formato);
     const { ok, faltantes } = AgenteVozModel.validarVariables(campos, variables);
-    if (!ok) return res.status(400).json({ codigo: "variables_incompletas", msg: "Faltan campos requeridos", faltantes });
+    if (!ok) {
+      logger.warn(`[sesiones] RECHAZADO 400 variables_incompletas empresa=${idEmpresa} faltantes=${faltantes.join(",")}`);
+      return res.status(400).json({ codigo: "variables_incompletas", msg: "Faltan campos requeridos", faltantes });
+    }
 
     // Voz: del body o default por env. (TODO: decidir si la voz vive en la plantilla/empresa.)
     // Velocidad del habla: override por llamada (body.velocidad) > config de la voz
