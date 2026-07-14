@@ -34,7 +34,10 @@ async function enviarWebhook({ webhookUrl, webhookSecret }, event, payload) {
     // inspecciona la respuesta a mano para no perder esa señal.
     const res = await axios.post(webhookUrl, rawBody, { headers, timeout: 8000, validateStatus: () => true });
     if (res.status >= 300) {
-      logger.warn(`[webhook] ${event} -> ${webhookUrl} respondio HTTP ${res.status}`);
+      // El cuerpo de la respuesta suele traer el motivo del rechazo (campo
+      // faltante, firma invalida, etc.); sin el, un 400 no dice nada.
+      const cuerpo = JSON.stringify(res.data ?? "").slice(0, 500);
+      logger.warn(`[webhook] ${event} -> ${webhookUrl} respondio HTTP ${res.status} body=${cuerpo}`);
     }
   } catch (error) {
     // Fallas de red (DNS, timeout, conexion rechazada): el integrador puede
