@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contrato JSON — agente_voz POST /sesiones</title>
+<style>
+  :root{
+    --bg:#ffffff; --fg:#1a1d24; --muted:#5b6472; --card:#f6f8fa; --border:#e1e6ec;
+    --req:#c0392b; --req-bg:#fdecea; --opt:#1e7e34; --opt-bg:#e9f6ee;
+    --code-bg:#f0f3f6; --accent:#2563eb; --warn:#b7791f; --warn-bg:#fdf6e3;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1319; --fg:#e6eaf0; --muted:#9aa4b2; --card:#161b22; --border:#2b323c;
+      --req:#ff6b6b; --req-bg:#3a1d1d; --opt:#6fcf97; --opt-bg:#1c3226;
+      --code-bg:#1c2129; --accent:#6ea8fe; --warn:#e2b53d; --warn-bg:#33290f;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1319; --fg:#e6eaf0; --muted:#9aa4b2; --card:#161b22; --border:#2b323c;
+    --req:#ff6b6b; --req-bg:#3a1d1d; --opt:#6fcf97; --opt-bg:#1c3226;
+    --code-bg:#1c2129; --accent:#6ea8fe; --warn:#e2b53d; --warn-bg:#33290f;
+  }
+  :root[data-theme="light"]{
+    --bg:#ffffff; --fg:#1a1d24; --muted:#5b6472; --card:#f6f8fa; --border:#e1e6ec;
+    --req:#c0392b; --req-bg:#fdecea; --opt:#1e7e34; --opt-bg:#e9f6ee;
+    --code-bg:#f0f3f6; --accent:#2563eb; --warn:#b7791f; --warn-bg:#fdf6e3;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55;font-size:15px}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px}
+  h1{font-size:26px;margin:0 0 4px}
+  h2{font-size:19px;margin:38px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--border)}
+  h3{font-size:15px;margin:22px 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  p{margin:8px 0}
+  .sub{color:var(--muted);margin:0 0 8px}
+  code{background:var(--code-bg);padding:2px 6px;border-radius:5px;font-family:"SF Mono",ui-monospace,Consolas,monospace;font-size:.9em}
+  pre{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.5}
+  pre code{background:none;padding:0}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin:14px 0}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  .tblwrap{overflow-x:auto}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  tr:last-child td{border-bottom:none}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:700;white-space:nowrap}
+  .req{background:var(--req-bg);color:var(--req)}
+  .opt{background:var(--opt-bg);color:var(--opt)}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0;font-size:13px}
+  .box{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px}
+  .arrow{color:var(--accent);font-weight:700}
+  .warn{background:var(--warn-bg);border-left:4px solid var(--warn);border-radius:6px;padding:12px 14px;margin:14px 0}
+  .ok{border-left:4px solid var(--opt)}
+  .bad{border-left:4px solid var(--req)}
+  .loc{font-size:12px;color:var(--muted);margin-top:4px}
+  .loc b{color:var(--accent);font-weight:600}
+  ul{margin:8px 0;padding-left:22px}
+  li{margin:5px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Contrato JSON de <code>agente_voz</code></h1>
+  <p class="sub">Qué espera recibir <code>POST /sesiones</code>, dónde vive el schema, qué es obligatorio y qué pasa con lo no mapeado. Verificado contra el código (rama <code>main</code>) y la BD <code>aiyou_app</code> · plantilla 139 / formato 72.</p>
+
+  <h2>1 · Cómo integra Target: POST directo a /sesiones</h2>
+  <div class="flow">
+    <div class="box"><b>Marcador / Asterisk de Target</b><br>(infra del tercero)</div>
+    <span class="arrow">→</span>
+    <div class="box"><b>agente_voz</b><br>POST /sesiones</div>
+  </div>
+  <p>El marcador/Asterisk de Target (infraestructura de ellos) llama <b>directo</b> a la API de agente_voz: <code>POST /sesiones</code>. Ese es el único JSON que Target arma y envía — es lo que documenta este contrato.</p>
+
+  <h3>Lo que Target envía (<code>POST /sesiones</code>)</h3>
+<pre><code>{
+  "id_plantilla": 139,            // OBLIGATORIO · Target debe mandarlo (no se inyecta solo)
+  "variables": { ... },           // los campos del formato (ver §2 y §4)
+  "id_voz": 0,                    // opcional
+  "codec": "pcm_s16le_16k",       // opcional
+  "metadata": { "external_call_id": "..." }   // opcional
+}</code></pre>
+  <p class="loc">Lo lee agente_voz en <b>sesiones.controller.js:43</b>. La respuesta trae <code>{ session_id, ws_url, sample_rate_hz }</code>; el Asterisk de Target conecta el audio de la llamada a ese <code>ws_url</code>.</p>
+
+  <h2>2 · El body que lee agente_voz</h2>
+  <p class="sub">Desestructurado en <code>sesiones.controller.js:43</code>:</p>
+  <div class="tblwrap"><table>
+    <tr><th>Campo</th><th>Estado</th><th>Qué hace</th></tr>
+    <tr><td><code>id_plantilla</code></td><td><span class="pill req">OBLIGATORIO</span></td><td>Sin él → <code>400 plantilla_invalida</code>. Resuelve la plantilla y su formato.</td></tr>
+    <tr><td><code>variables</code></td><td><span class="pill opt">objeto</span></td><td>Default <code>{}</code>. Se valida contra el formato (ver §3) y alimenta el prompt.</td></tr>
+    <tr><td><code>id_voz</code></td><td><span class="pill opt">opcional</span></td><td>Si no viene, usa la voz default del env. Si es inválida → <code>400 voz_invalida</code>.</td></tr>
+    <tr><td><code>id_tool</code></td><td><span class="pill opt">opcional</span></td><td>Cae al <code>id_tool</code> de la empresa. Debe ser tipo <code>llamada</code>.</td></tr>
+    <tr><td><code>codec</code></td><td><span class="pill opt">opcional</span></td><td>Default <code>pcm_s16le_16k</code>.</td></tr>
+    <tr><td><code>metadata</code></td><td><span class="pill opt">opcional</span></td><td><code>metadata.external_call_id</code> se usa como <code>provider_call_id</code> en las tools/webhooks.</td></tr>
+    <tr><td><code>velocidad</code></td><td><span class="pill opt">opcional</span></td><td>Override de velocidad del habla. Si no es numérica → <code>400 velocidad_invalida</code>.</td></tr>
+  </table></div>
+
+  <h2>3 · Dónde está escrito el schema de <code>variables</code></h2>
+  <div class="card">
+    <p style="margin-top:0"><b>NO está en el código. Está en la base de datos.</b></p>
+    <p>El schema de qué variables acepta cada plantilla vive en la tabla <code>formato_campo</code>, filtrada por el <code>id_formato</code> de la plantilla. El código solo la <em>lee</em>:</p>
+    <ul>
+      <li><b>Query:</b> <code>getFormatoCampos()</code> en <b>agenteVoz.model.js:61-70</b> → <code>SELECT nombre_campo, etiqueta, tipo_dato, requerido, longitud FROM formato_campo WHERE id_formato = ?</code></li>
+      <li><b>Cadena:</b> <code>plantilla 139</code> → <code>id_formato 72</code> → filas de <code>formato_campo</code>.</li>
+      <li><b>La bandera de obligatoriedad</b> es la columna <code>requerido</code> (1 = obligatorio).</li>
+    </ul>
+    <p style="margin-bottom:0">👉 Para cambiar qué campos existen o cuáles son obligatorios, se edita la <b>tabla <code>formato_campo</code></b> en la BD — no se toca código ni se redespliega.</p>
+  </div>
+
+  <h2>4 · Campos de la plantilla 139 (formato 72)</h2>
+  <h3>Obligatorios — 5 (<code>requerido = 1</code>)</h3>
+  <div class="tblwrap"><table>
+    <tr><th>nombre_campo</th><th>tipo_dato</th><th>Nota</th></tr>
+    <tr><td><code>DEPARTAMENTO</code></td><td>string</td><td>Ubicación (elige sucursal cercana).</td></tr>
+    <tr><td><code>PROVINCIA</code></td><td>string</td><td>Ubicación.</td></tr>
+    <tr><td><code>DISTRITO</code></td><td>string</td><td>Ubicación.</td></tr>
+    <tr><td><code>OFERTA_CREDICASH</code></td><td>string</td><td>Monto ofertado.</td></tr>
+    <tr><td><code>lead_id</code></td><td>integer*</td><td>*En BD es integer, pero la validación no revisa el tipo → se acepta como número (<code>900001</code>) o string (<code>"900001"</code>).</td></tr>
+  </table></div>
+  <h3>Opcionales — 23 (<code>requerido = 0</code>)</h3>
+  <p class="sub"><code>cl_carga, cl_id, cl_telf2, Region, PERFIL, cl_base, Semaforo, MARCA_PD, LOTE, GRUPO_SEGMENTO, FLG_PEARS, FLG_URB, SITUACION_LABORAL, MSI, DIRECCION, PLAZO_CREDICASH, TASA_CREDICASH, CME_CREDICASH, PRODUCTO_EXTERNO, PROPENSION_CREDICASH, TIPO_ZONA, FRESCURA, app</code></p>
+
+  <h3>Variables reservadas (no están en formato_campo)</h3>
+  <p>El controlador inyecta/usa algunas variables extra que <b>no</b> se validan contra el formato: <code>nombre</code> / <code>nombre_completo</code> (para el saludo), <code>telefono</code> (solo para el log de traza), <code>nombre_corto</code> (auto-derivada del nombre), <code>tipificaciones</code> y <code>provider_call_id</code> (las agrega el gateway). <span class="loc"><b>sesiones.controller.js:104-123</b></span></p>
+
+  <h2>5 · Cómo se valida</h2>
+  <p><code>validarVariables(campos, variables)</code> — <b>agenteVoz.model.js:114-123</b>:</p>
+<pre><code>const faltantes = campos
+  .filter((c) => Number(c.requerido) === 1)          // solo los obligatorios
+  .filter((c) => {
+    const v = variables[c.nombre_campo];
+    return v === undefined || v === null || v === ""; // ausente o vacío
+  })
+  .map((c) => c.nombre_campo);
+return { ok: faltantes.length === 0, faltantes };</code></pre>
+  <p>Es decir: <b>solo comprueba que los campos <code>requerido=1</code> estén presentes y no vacíos.</b> No valida tipos, ni longitud, ni rechaza campos desconocidos.</p>
+
+  <h2>6 · ¿Qué pasa si mandas algo que NO está mapeado?</h2>
+
+  <div class="warn ok">
+    <b>Campo extra que no existe en el formato</b> (ej. <code>"COLOR_FAVORITO": "azul"</code>)<br>
+    → <b>Se ignora en silencio.</b> No da error. <code>validarVariables</code> solo itera sobre los campos del formato, así que ni lo mira. Se mergea en <code>varsPrompt</code> (<code>sesiones.controller.js:110</code>), pero si el prompt no lo referencia con <code>{{COLOR_FAVORITO}}</code>, queda inerte. <b>La llamada procede normal.</b>
+  </div>
+
+  <div class="warn bad">
+    <b>Falta un campo obligatorio</b> (ej. sin <code>OFERTA_CREDICASH</code>)<br>
+    → <b>Rechazo <code>400</code></b> con <code>{ "codigo": "variables_incompletas", "faltantes": ["OFERTA_CREDICASH"] }</code>. La sesión no se crea, no hay llamada. <span class="loc"><b>sesiones.controller.js:65-68</b></span>
+  </div>
+
+  <div class="warn">
+    <b>Falta un campo opcional que el prompt SÍ referencia</b> (ej. el prompt usa <code>{{correo}}</code> y no lo mandaste)<br>
+    → <b>No rechaza</b>, pero queda "sin resolver": warning <code>plantilla con N variable(s) sin resolver</code> y el agente podría leer el placeholder en voz alta o dejar el hueco. <span class="loc"><b>sesiones.controller.js:132</b> (<code>variablesSinResolver</code>)</span>
+  </div>
+
+  <div class="warn">
+    <b>Tipo equivocado</b> (ej. <code>lead_id</code> como string aunque en BD sea integer)<br>
+    → <b>Se acepta.</b> La validación no revisa <code>tipo_dato</code> ni <code>longitud</code> — son informativos. Target, al postear directo, controla el tipo, pero da igual porque no se valida.
+  </div>
+
+  <h2>7 · Tabla de rechazos (POST /sesiones)</h2>
+  <div class="tblwrap"><table>
+    <tr><th>HTTP</th><th>codigo</th><th>Causa</th></tr>
+    <tr><td>400</td><td><code>plantilla_invalida</code></td><td>Falta <code>id_plantilla</code>, o no existe / es de otra empresa.</td></tr>
+    <tr><td>400</td><td><code>variables_incompletas</code></td><td>Falta ≥1 campo <code>requerido=1</code>. Devuelve <code>faltantes[]</code>.</td></tr>
+    <tr><td>400</td><td><code>voz_invalida</code> / <code>tool_invalida</code> / <code>velocidad_invalida</code></td><td>Parámetro opcional presente pero inválido.</td></tr>
+    <tr><td>401</td><td><code>auth_invalida</code></td><td>Empresa no encontrada.</td></tr>
+    <tr><td>503</td><td><code>agente_indisponible</code></td><td>API de voz inactiva, sin key, o sin canales libres.</td></tr>
+  </table></div>
+
+  <p class="loc" style="margin-top:30px">Fuentes: <code>agente_voz/src/controllers/sesiones.controller.js</code>, <code>agente_voz/src/models/agenteVoz.model.js</code>, tabla <code>formato_campo</code> (BD <code>aiyou_app</code>, <code>id_formato=72</code>).</p>
+
+</div>
+</body>
+</html>

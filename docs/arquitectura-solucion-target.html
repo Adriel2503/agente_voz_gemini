@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arquitectura — Campaña de voz Target (Credicash)</title>
+<style>
+  :root{
+    --bg:#ffffff; --fg:#1a1d24; --muted:#5b6472; --card:#f6f8fa; --border:#e1e6ec;
+    --accent:#2563eb; --accent2:#7c3aed; --ok:#1e7e34; --ok-bg:#e9f6ee;
+    --req:#c0392b; --req-bg:#fdecea; --warn:#b7791f; --warn-bg:#fdf6e3;
+    --code-bg:#f0f3f6; --target:#0f766e; --google:#a83232; --aiyou:#2563eb;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1319; --fg:#e6eaf0; --muted:#9aa4b2; --card:#161b22; --border:#2b323c;
+      --accent:#6ea8fe; --accent2:#b18cf0; --ok:#6fcf97; --ok-bg:#1c3226;
+      --req:#ff6b6b; --req-bg:#3a1d1d; --warn:#e2b53d; --warn-bg:#33290f;
+      --code-bg:#1c2129; --target:#4dd4c8; --google:#f08a8a; --aiyou:#6ea8fe; }
+  }
+  :root[data-theme="dark"]{ --bg:#0f1319; --fg:#e6eaf0; --muted:#9aa4b2; --card:#161b22; --border:#2b323c;
+    --accent:#6ea8fe; --accent2:#b18cf0; --ok:#6fcf97; --ok-bg:#1c3226; --req:#ff6b6b; --req-bg:#3a1d1d;
+    --warn:#e2b53d; --warn-bg:#33290f; --code-bg:#1c2129; --target:#4dd4c8; --google:#f08a8a; --aiyou:#6ea8fe; }
+  :root[data-theme="light"]{ --bg:#ffffff; --fg:#1a1d24; --muted:#5b6472; --card:#f6f8fa; --border:#e1e6ec;
+    --accent:#2563eb; --accent2:#7c3aed; --ok:#1e7e34; --ok-bg:#e9f6ee; --req:#c0392b; --req-bg:#fdecea;
+    --warn:#b7791f; --warn-bg:#fdf6e3; --code-bg:#f0f3f6; --target:#0f766e; --google:#a83232; --aiyou:#2563eb; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.6;font-size:15px}
+  .wrap{max-width:1040px;margin:0 auto;padding:36px 22px 90px}
+  h1{font-size:28px;margin:0 0 6px;letter-spacing:-.02em}
+  h2{font-size:21px;margin:44px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--border)}
+  h3{font-size:16px;margin:24px 0 8px}
+  h4{font-size:13px;margin:18px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  p{margin:9px 0}
+  .lede{color:var(--muted);font-size:16px}
+  code{background:var(--code-bg);padding:2px 6px;border-radius:5px;font-family:"SF Mono",ui-monospace,Consolas,monospace;font-size:.88em}
+  pre{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:12.5px;line-height:1.45}
+  pre code{background:none;padding:0}
+  .mermaidwrap{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:22px 16px;overflow-x:auto;text-align:center;margin:14px 0}
+  .mermaid{background:none;font-size:14px}
+  .mermaid:not([data-processed]){color:var(--muted);font-size:12px;text-align:left;white-space:pre}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin:14px 0}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  .tblwrap{overflow-x:auto}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em}
+  tr:last-child td{border-bottom:none}
+  .num{font-variant-numeric:tabular-nums;text-align:right}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+  .p-target{background:var(--ok-bg);color:var(--target)}
+  .p-aiyou{background:var(--req-bg);color:var(--aiyou)}
+  .p-google{background:var(--warn-bg);color:var(--google)}
+  .p-req{background:var(--req-bg);color:var(--req)}
+  .p-opt{background:var(--ok-bg);color:var(--ok)}
+  .warn{background:var(--warn-bg);border-left:4px solid var(--warn);border-radius:6px;padding:12px 15px;margin:14px 0}
+  .info{background:var(--card);border-left:4px solid var(--accent);border-radius:6px;padding:12px 15px;margin:14px 0}
+  .bad{background:var(--req-bg);border-left:4px solid var(--req);border-radius:6px;padding:12px 15px;margin:14px 0}
+  .loc{font-size:12px;color:var(--muted)}
+  .loc b{color:var(--accent);font-weight:600}
+  ul,ol{margin:8px 0;padding-left:24px}
+  li{margin:6px 0}
+  .toc{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 20px;margin:20px 0}
+  .toc ol{margin:4px 0}
+  .toc a{color:var(--accent);text-decoration:none}
+  .toc a:hover{text-decoration:underline}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13.5px;margin:10px 0}
+  .kv dt{color:var(--muted)}
+  .kv dd{margin:0;font-weight:500}
+  .tag{font-size:11px;padding:1px 7px;border-radius:4px;background:var(--code-bg);color:var(--muted);border:1px solid var(--border)}
+  .big{display:flex;flex-wrap:wrap;gap:12px;margin:14px 0}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;min-width:150px;flex:1}
+  .stat .n{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+  .stat .l{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Arquitectura de la solución — Campaña de voz Target (Credicash)</h1>
+  <p class="lede">Agente de voz con IA para llamadas salientes de colocación de crédito (producto CREDICASH / Alfin). Cómo se lanza una llamada, cómo se conectan el dialer, agente_voz y el motor de voz, el flujo conversacional real, el detalle interno de <code>agente_voz</code>, el modelo de datos y la evidencia operativa.</p>
+  <p class="loc">Verificado contra el código (<code>agente_voz</code>, rama <code>main</code>) y datos reales de la BD <code>aiyou_app</code> · empresa <b>id 8 (Target_Credicash)</b> · plantilla 139 / formato 72 · <b>40,412 sesiones</b> analizadas en <code>api_voz_sesion</code>. Lo marcado <span class="tag">inferencia</span> es infraestructura de Target que no controlamos.</p>
+
+  <div class="warn"><b>⚠️ Dos motores — leer primero.</b> El gateway <code>agente_voz</code> soporta <b>dos motores de voz</b> (env <code>ENGINE</code>): <b>Ultravox</b> y <b>Gemini</b>. La <b>campaña masiva real (40k llamadas, jun-2026) corrió en Ultravox</b>. <b>Gemini es un piloto reciente (~91 llamadas)</b> — es la migración en curso y el foco de las pruebas actuales. Este documento detalla sobre todo el <b>camino Gemini</b> (el futuro), y marca dónde la producción histórica difería (Ultravox).</div>
+
+  <div class="toc">
+    <h4 style="margin-top:0">Contenido</h4>
+    <ol>
+      <li><a href="#resumen">Resumen ejecutivo</a></li>
+      <li><a href="#realidad">Realidad operativa (datos reales)</a></li>
+      <li><a href="#diagrama">Diagrama de arquitectura</a></li>
+      <li><a href="#actores">Actores, dueños y conexiones</a></li>
+      <li><a href="#flujo">Flujo end-to-end de una llamada</a></li>
+      <li><a href="#conversacion">Flujo conversacional del agente (Lili)</a></li>
+      <li><a href="#agentevoz">agente_voz en detalle</a></li>
+      <li><a href="#audio">Pipeline de audio</a></li>
+      <li><a href="#bd">La base de datos</a></li>
+      <li><a href="#criticos">Puntos críticos y hallazgos</a></li>
+    </ol>
+  </div>
+
+  <h2 id="resumen">1 · Resumen ejecutivo</h2>
+  <p>La solución permite que <b>Target</b> lance <b>llamadas telefónicas salientes automatizadas</b> a sus leads: una agente de IA (voz, "Lili") ofrece un crédito preaprobado (producto <b>CREDICASH / Alfin</b>), maneja objeciones, sugiere la sucursal más cercana y <b>agenda una cita</b> o <b>tipifica</b> el resultado. Es una operación de <b>colocación de crédito a escala</b> (~40k llamadas en 9 días).</p>
+  <p>El sistema ensambla <b>tres dominios</b>:</p>
+  <div class="tblwrap"><table>
+    <tr><th>Dominio</th><th>Dueño</th><th>Rol</th></tr>
+    <tr><td>Dialer + Asterisk (troncal SIP "perucalls") + troncal telefónica</td><td><span class="pill p-target">Target</span></td><td>Origina la llamada al celular, transporta el audio y crea la sesión de IA.</td></tr>
+    <tr><td><code>agente_voz</code> (gateway) + BD + CRM app-api</td><td><span class="pill p-aiyou">AiYou</span></td><td>Orquesta la sesión, el prompt, las tools, la tipificación y los webhooks.</td></tr>
+    <tr><td>Motor de voz: <b>Ultravox</b> (producción) o <b>Gemini Live</b> (piloto)</td><td><span class="pill p-google">Google</span> / Ultravox</td><td>STT + LLM + TTS en tiempo real. Ultravox usó voz ElevenLabs; Gemini usa Aoede.</td></tr>
+  </table></div>
+
+  <h2 id="realidad">2 · Realidad operativa (datos reales de <code>api_voz_sesion</code>)</h2>
+  <p>Evidencia directa de las <b>40,412 sesiones</b> de la empresa 8. No son estimaciones.</p>
+  <div class="big">
+    <div class="stat"><div class="n">40,412</div><div class="l">sesiones totales</div></div>
+    <div class="stat"><div class="n">22 jun–1 jul</div><div class="l">campaña real (9 días)</div></div>
+    <div class="stat"><div class="n">21.7 s</div><div class="l">duración promedio (mediana 18s)</div></div>
+    <div class="stat"><div class="n">124</div><div class="l">citas agendadas (0.3%)</div></div>
+  </div>
+  <div class="big">
+    <div class="stat"><div class="n">7,407</div><div class="l">pico de llamadas en un día (27-jun)</div></div>
+    <div class="stat"><div class="n">13.8%</div><div class="l">llamadas &lt; 10 s (no arrancaron)</div></div>
+    <div class="stat"><div class="n">93.3%</div><div class="l">sesiones SIN tipificar</div></div>
+    <div class="stat"><div class="n">91</div><div class="l">llamadas en Gemini (resto Ultravox)</div></div>
+  </div>
+
+  <h4>Cómo terminan las llamadas (<code>motivo_fin</code>)</h4>
+  <div class="tblwrap"><table>
+    <tr><th>motivo_fin</th><th>Motor</th><th class="num">n</th><th class="num">%</th></tr>
+    <tr><td><code>hangup_caller</code></td><td>ambos</td><td class="num">25,813</td><td class="num">63.87%</td></tr>
+    <tr><td><code>agent_finished</code></td><td>Ultravox</td><td class="num">7,345</td><td class="num">18.18%</td></tr>
+    <tr><td><code>ultravox_close</code></td><td>Ultravox</td><td class="num">6,983</td><td class="num">17.28%</td></tr>
+    <tr><td><code>asterisk_close</code></td><td>ambos</td><td class="num">153</td><td class="num">0.38%</td></tr>
+    <tr><td><code>hangup_agente</code></td><td>ambos</td><td class="num">29</td><td class="num">0.07%</td></tr>
+    <tr><td><code>gemini_close</code></td><td>Gemini</td><td class="num">13</td><td class="num">0.03%</td></tr>
+    <tr><td>(null / created sin cerrar)</td><td>—</td><td class="num">66</td><td class="num">0.16%</td></tr>
+  </table></div>
+  <p><b>~64% las cuelga el destinatario</b>; ninguna llegó a <code>max_call_seconds</code>. El dominio de <code>agent_finished</code>+<code>ultravox_close</code> confirma que lo masivo fue Ultravox.</p>
+
+  <h4>Qué resultado dejan (tipificaciones reales — top)</h4>
+  <div class="tblwrap"><table>
+    <tr><th>Tipificación</th><th class="num">n</th></tr>
+    <tr><td>DERIVA A CASILLA DE VOZ</td><td class="num">914</td></tr>
+    <tr><td>NO CONTESTAN</td><td class="num">551</td></tr>
+    <tr><td>NO NECESITA PRÉSTAMO EN EL MES EN CURSO</td><td class="num">234</td></tr>
+    <tr><td>CORTA LLAMADA</td><td class="num">173</td></tr>
+    <tr><td><b>ACEPTA OFERTA - PASARÁ A DESEMBOLSO</b> (agendamiento)</td><td class="num">124</td></tr>
+    <tr><td>NO INTERESADO</td><td class="num">109</td></tr>
+    <tr><td>ALFIN NO TIENE SUCURSAL CERCA</td><td class="num">95</td></tr>
+  </table></div>
+  <p class="loc">Solo 6.7% quedó tipificada (2,688 de 40,412). El "éxito" del negocio son las ~124 "ACEPTA OFERTA".</p>
+
+  <div class="bad"><b>🔴 Fuga de datos en producción.</b> <code>variables_capturadas</code> está <b>vacío en 40,402 de 40,412</b> filas, y los campos de lead en <code>metadata</code> (<code>lead_id</code>, <code>phone_number</code>, <code>vendor_lead_code</code>) llegan <b>vacíos</b>. El payload rico del lead (OFERTA, TASA, documento, etc.) solo aparece en las 10 filas de <em>test</em>. En la campaña real, la data de contacto/lead <b>no se está persistiendo</b> en <code>api_voz_sesion</code> → hueco de trazabilidad y de reporte. <span class="tag">a revisar con Target/integración</span></div>
+
+  <h2 id="diagrama">3 · Diagrama de arquitectura</h2>
+  <div class="mermaidwrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph TARGET["🏢 Infraestructura de Target · tercero"]
+    direction LR
+    LEADS[("BD Leads<br/>Credicash")]
+    DIALER["Dialer / Asterisk<br/>troncal SIP 'perucalls'"]
+    LEADS --> DIALER
+  end
+
+  PHONE["📱 Cliente<br/>(celular)"]
+  DIALER <-->|"audio · PSTN móvil"| PHONE
+
+  subgraph AIYOU["☁️ agente_voz · AiYou (EasyPanel)"]
+    direction LR
+    CTRL["Controller<br/>POST /sesiones"]
+    BRIDGE["audioBridge / geminiEngine<br/>WS ↔ dialer · audio+ctrl"]
+    ENGINE["Motor de voz<br/>Ultravox (prod) /<br/>Gemini (piloto)"]
+    CTRL --> BRIDGE
+    BRIDGE <--> ENGINE
+  end
+
+  DIALER ==>|"1 · POST /sesiones<br/>HTTPS · Bearer o ?token"| CTRL
+  DIALER ==>|"3 · audio WSS<br/>/v1/sesiones/:id?token"| BRIDGE
+
+  DB[("🗄️ PostgreSQL<br/>aiyou_app · Aurora<br/>plantilla · formato · voz")]
+  ENGINE <==>|"4 · streaming voz"| VOZ["🧠 Gemini Live (Aoede)<br/>o Ultravox (ElevenLabs)"]
+  CTRL -->|"2 · SQL"| DB
+  ENGINE -.->|"5 · webhooks HMAC · session.*"| CRM["CRM de Target<br/>/api/bot/tipificar"]
+  CTRL -.->|"precarga sucursales (HTTPS)"| APPAPI["app-api · CRM AiYou"]
+
+  classDef target fill:#14b8a622,stroke:#0d9488,stroke-width:2px;
+  classDef aiyou fill:#3b82f622,stroke:#2563eb,stroke-width:2px;
+  classDef google fill:#ef444422,stroke:#dc2626,stroke-width:2px;
+  classDef ext fill:#8b5cf622,stroke:#7c3aed,stroke-width:2px;
+  class LEADS,DIALER,CRM target;
+  class CTRL,BRIDGE,ENGINE,DB,APPAPI aiyou;
+  class VOZ google;
+  class PHONE ext;
+    </pre>
+  </div>
+  <p class="loc">Correlación: cada llamada se cruza por <code>external_call_id</code> (uniqueid de Asterisk, ej. <code>1784154963.166</code>) + <code>aiyou_uuid</code>. El canal SIP real observado en <code>metadata</code> es <code>SIP/perucalls-…</code>. Leyenda: <span class="pill p-target">Target</span> · <span class="pill p-aiyou">AiYou</span> · <span class="pill p-google">motor de voz</span>.</p>
+
+  <h2 id="actores">4 · Actores, dueños y conexiones</h2>
+  <div class="tblwrap"><table>
+    <tr><th>Componente</th><th>Dueño</th><th>Conexión</th><th>Detalle</th></tr>
+    <tr><td>Dialer + Asterisk (troncal "perucalls")</td><td><span class="pill p-target">Target</span></td><td>SIP → PSTN; HTTPS+WSS a AiYou</td><td>Origina la llamada, crea la sesión y transporta el audio. Confirmado en <code>metadata.asterisk_channel</code>. <span class="tag">inferencia parcial</span></td></tr>
+    <tr><td>Celular del cliente</td><td>—</td><td>Red móvil</td><td>La persona a la que se ofrece el crédito.</td></tr>
+    <tr><td><b>agente_voz</b></td><td><span class="pill p-aiyou">AiYou</span></td><td>HTTP + WSS</td><td>Gateway Node.js, puerto <code>3000</code> tras Traefik/EasyPanel.</td></tr>
+    <tr><td>PostgreSQL <code>aiyou_app</code></td><td><span class="pill p-aiyou">AiYou</span></td><td>SQL (pool <code>pg</code>)</td><td>Aurora RDS compartida. Plantilla, formato, tipificaciones, voz, sesiones.</td></tr>
+    <tr><td>CRM app-api</td><td><span class="pill p-aiyou">AiYou</span></td><td>HTTPS REST</td><td><code>app-api.ai-you.io</code> — precarga de sucursales y ejecución de tools.</td></tr>
+    <tr><td>Motor de voz</td><td><span class="pill p-google">Google</span>/Ultravox</td><td>WSS</td><td>Ultravox (producción, voz ElevenLabs) o Gemini <code>gemini-3.1-flash-live-preview</code> (piloto, voz Aoede).</td></tr>
+    <tr><td>CRM de Target</td><td><span class="pill p-target">Target</span></td><td>HTTPS (webhooks)</td><td>Recibe eventos <code>session.*</code> firmados con HMAC.</td></tr>
+  </table></div>
+
+  <h2 id="flujo">5 · Flujo end-to-end de una llamada</h2>
+  <ol>
+    <li><b>El dialer origina la llamada.</b> Toma un lead, hace que su Asterisk (troncal "perucalls") marque al celular y crea la sesión de IA con <code>POST /v1/agente-voz/sesiones</code>, autenticando con un token (<b>Bearer</b> o <code>?token=</code>) que se resuelve a <code>id_empresa=8</code> (hash SHA-256 contra <code>configuracion_api_voz.token_hash</code>).</li>
+    <li><b>agente_voz prepara la sesión</b> (antes de que suene): valida token/empresa, carga la <b>plantilla 139</b> y su <b>prompt</b>, valida las <b>variables</b> contra <code>formato_campo</code> (5 obligatorias), carga las tipificaciones, y — <b>solo porque el prompt usa <code>tienda_cercana</code></b> — <b>precarga las 3 sucursales más cercanas</b>. Responde <code>{ session_id, ws_url, expira_en, codec_acordado, sample_rate_hz, channels }</code>.</li>
+    <li><b>Se establece el audio.</b> Al contestar, el Asterisk abre el <b>WebSocket de audio</b> a <code>wss://…/v1/sesiones/&lt;session_id&gt;?token=&lt;token&gt;</code>. agente_voz valida el token + que la sesión exista y sea de la empresa.</li>
+    <li><b>Se abre el motor de voz</b> (Gemini Live por WSS, o Ultravox). Con <code>greetFirst</code>, la agente <b>habla primero</b> (trigger de texto que esquiva el VAD).</li>
+    <li><b>Conversación en tiempo real</b> (ver §6). El audio sube (8k→16k) y baja (24k→8k); el VAD detecta turnos; el barge-in vacía la cola de reproducción.</li>
+    <li><b>Tools:</b> <code>buscarSucursal</code> (solo si el cliente vive en otra zona), <code>agendar_cita</code>, <code>tipificarLlamada</code>, <code>hangUp</code>. Cada una dispara <code>session.tool_call</code>.</li>
+    <li><b>Cierre.</b> Al colgar el caller hay una <b>ventana de gracia de 6 s</b> para tipificar; se persiste la sesión en <code>api_voz_sesion</code> y se dispara <code>session.ended</code>.</li>
+  </ol>
+
+  <h2 id="conversacion">6 · Flujo conversacional del agente (Lili) — prompt real de la plantilla 139</h2>
+  <p>El "cómo se comporta" el agente vive en el <b>system prompt</b> (5 secciones, ~30k chars). La agente <b>habla primero</b>. El flujo real (sección 4 del prompt):</p>
+  <div class="tblwrap"><table>
+    <tr><th>Paso</th><th>Qué hace</th></tr>
+    <tr><td><b>4.0 Enrutamiento global</b></td><td>Reglas que aplican en todo momento: cierre por intención ("chao/basta" → tipifica <code>550</code> → hangUp); <b>"aceptación no es cierre"</b> (ya/dale/agéndame = avanzar, nunca despedir); audio no entendido 3 veces → <code>562</code>; no es el titular → <code>555</code>.</td></tr>
+    <tr><td><b>4.1 Saludo + permiso</b></td><td>Frase EXACTA fija ("Hola, soy Lili… crédito PRE APROBADO, ¿me permite continuar?"). No ejecuta tools antes de hablar.</td></tr>
+    <tr><td><b>4.2 Clasificar permiso</b></td><td>4 caminos: SÍ → 4.3; negación → despedida sin cita (4.8); pregunta antes del sí → respuestas genéricas y reclasifica; ambiguo → repregunta única.</td></tr>
+    <tr><td><b>4.3 Presentación</b></td><td>Recién aquí menciona marca, tienda, monto y cuotas (<code>{{OFERTA_CREDICASH}}</code>, <code>{{PLAZO_CREDICASH}}</code>, <code>{{tienda_cercana_limpia}}</code>). Cierra con "¿Le agendo una cita?".</td></tr>
+    <tr><td><b>4.4 Tienda</b></td><td>Ofrece SOLO la #1 precargada. Pide otra → ofrece #2 y #3 (ya precargadas). Vive en otra zona → <b>única invocación de <code>buscarSucursal</code></b> (exige residencia + 3 niveles de ubigeo). Sin tienda cerca → <code>552</code> → hangUp.</td></tr>
+    <tr><td><b>4.5 Fecha y hora</b></td><td>Parsea la hora a 24h; "el día que el cliente dijo, gana". Regla clave: <b>la agente NO hace aritmética de horas</b> — propone y deja que <code>agendar_cita</code> valide.</td></tr>
+    <tr><td><b>4.6 Agendamiento (3 fases)</b></td><td>Confirmación verbal → frase puente → <code>agendar_cita</code> (1 vez) → confirmación final ("DNI + recibo"). Si <code>ok:false</code> o error: NO afirmar cita, reintentar 1 vez, si falla → <code>545</code>.</td></tr>
+    <tr><td><b>4.7 Dudas</b></td><td>Catálogo de respuestas cortas (empresa, tasa, cuotas, "¿de qué banco?").</td></tr>
+    <tr><td><b>4.8 Objeciones + despedida</b></td><td>10 objeciones guionadas (pensarlo, ocupado, no me interesa, ya tengo deudas, ¿es estafa?...), máx. 2 intentos; despedida que <b>siempre tipifica</b> con el id según el motivo.</td></tr>
+  </table></div>
+
+  <h4>IDs de tipificación cableados en el prompt</h4>
+  <p><code>550</code> declinó/cierre por intención · <code>548</code> pidió no contacto/reclamó datos · <code>552</code> sin tienda en su zona · <code>555</code> no titular · <code>545</code> no se pudo coordinar fecha/error al agendar · <code>562</code> audio no entendido. La <b>cita agendada NO se tipifica</b> (coincide con que <code>es_agendamiento_cita</code> vive en "ACEPTA OFERTA", ver §9).</p>
+
+  <h4>Guardas de compliance notables</h4>
+  <ul>
+    <li><b>Pre-permiso:</b> hasta el "sí" explícito solo puede decir nombre (Lili), rol genérico y "crédito preaprobado". <b>Prohibido</b> antes del sí: marca, tienda, monto, cuotas, tasa, direcciones.</li>
+    <li><b>Identidad:</b> solo <code>{{marca_tienda}}</code>. Prohibido decir "Banco Alfin", "Alfin" o "Credicash" (nombre interno).</li>
+    <li><b>Cita fantasma:</b> nunca afirmar una cita si <code>agendar_cita</code> no devolvió <code>ok:true</code>. Nunca prometer volver a llamar.</li>
+    <li><b>No inventar:</b> montos/tasas/tiendas solo salen de las variables o de <code>buscarSucursal</code>. Números en palabras (el TTS lee mal cifras).</li>
+  </ul>
+  <p class="loc">📁 Fuente: <code>plantilla.id=139</code>, campo <code>prompt</code> (BD <code>aiyou_app</code>). El prompt usa <code>{{tienda_cercana}}</code> (trío #1/#2/#3, cada una con variante RAW y <code>_limpia</code>), <code>{{direccion_limpia}}</code>, <code>{{saludo_horario}}</code>, <code>{{fecha_hoy}}</code>, <code>{{nombre_corto}}</code>, etc. <b>No</b> usa feriados ni <code>obtenerFechaHora</code>.</p>
+
+  <h2 id="agentevoz">7 · agente_voz en detalle</h2>
+
+  <h3>7.1 · Puertos, endpoints y autenticación</h3>
+  <div class="kv">
+    <dt>Puerto</dt><dd><code>PORT</code> = 3000 (un solo server HTTP; el WS comparte puerto vía <code>upgrade</code>).</dd>
+    <dt>REST</dt><dd><code>POST /v1/agente-voz/sesiones</code> (+ GET estado/transcripción, POST /terminar)</dd>
+    <dt>WebSocket audio</dt><dd><code>wss://…/v1/sesiones/:session_id?token=…</code></dd>
+    <dt>Auth REST</dt><dd>middleware <code>apiVozTokenAuth</code> — acepta <b>Bearer <em>o</em> <code>?token=</code></b>; hash SHA-256 sin sal contra <code>configuracion_api_voz.token_hash</code> → <code>id_empresa</code></dd>
+    <dt>Auth WS</dt><dd><code>resolveEmpresaFromToken</code> (mismo hash) por query string; además la sesión debe existir y ser de esa empresa</dd>
+    <dt>Respuesta POST</dt><dd><code>{ session_id, ws_url, expira_en, codec_acordado, sample_rate_hz, channels }</code> — el <code>sample_rate_hz</code> se deriva del <b>codec</b>, no del env</dd>
+    <dt>Heartbeat / purga</dt><dd>ping WS cada 25 s; sesión creada que no conecta se descarta a ~30 s</dd>
+  </div>
+  <p class="loc">📁 <b>src/index.js</b> · <b>src/middlewares/apiVozToken.middleware.js</b> · <b>src/models/apiVoz.model.js:12-24</b> · <b>src/controllers/sesiones.controller.js</b></p>
+
+  <h3>7.2 · Ciclo de vida del <code>POST /sesiones</code></h3>
+  <div class="tblwrap"><table>
+    <tr><th>#</th><th>Paso</th><th>Si falla</th></tr>
+    <tr><td>1</td><td>Lee <code>id_plantilla</code>, <code>variables</code>, <code>id_voz?</code>, <code>codec?</code>, <code>metadata?</code>, <code>velocidad?</code></td><td><code>400 plantilla_invalida</code></td></tr>
+    <tr><td>2</td><td>Valida empresa + <code>api_voz_activo=1</code></td><td><code>401</code> / <code>503</code></td></tr>
+    <tr><td>3</td><td>Carga plantilla + su formato</td><td><code>400 plantilla_invalida</code></td></tr>
+    <tr><td>4</td><td>Valida <code>variables</code> vs <code>formato_campo</code> (solo <code>requerido=1</code>)</td><td><code>400 variables_incompletas</code></td></tr>
+    <tr><td>5</td><td>Voz, velocidad, tool (tipo <code>llamada</code>), tipificaciones</td><td><code>400</code></td></tr>
+    <tr><td>6</td><td><b>Precarga sucursales</b> — <b>solo si el prompt contiene <code>"tienda_cercana"</code></b> (3 más cercanas)</td><td>degrada silencioso (timeout 8 s)</td></tr>
+    <tr><td>7</td><td>Enriquece variables + renderiza el prompt</td><td>variables sin resolver → warning</td></tr>
+    <tr><td>8</td><td>Reserva canal (cuenta vs <code>empresa.canal</code>), crea la "llamada" en el motor</td><td><code>503 agente_indisponible</code> si no hay cupo</td></tr>
+    <tr><td>9</td><td>Persiste sesión, dispara <code>session.created</code>, responde <code>ws_url</code></td><td>sigue sin webhook si falla</td></tr>
+  </table></div>
+  <p class="loc">📁 <b>src/controllers/sesiones.controller.js:41-293</b></p>
+
+  <h3>7.3 · Tools disponibles</h3>
+  <p>Al modelo llegan <b>5 funciones</b> (<code>tools=5</code>). <b>Importante:</b> el set NO es data-driven — está <b>hardcodeado en <code>tools/generica.js</code></b>; la tabla <code>tool</code> solo se valida por <code>tipo='llamada'</code>, su columna <code>ruta</code> no se usa.</p>
+  <div class="tblwrap"><table>
+    <tr><th>Tool</th><th>Qué hace / cuándo</th><th>Endpoint (app-api)</th></tr>
+    <tr><td><code>tipificarLlamada</code></td><td>Registra la tipificación por id. En cada salida terminal SIN cita.</td><td><code>PUT /api/crm/tools/llamadas/nuevaTipificacion</code></td></tr>
+    <tr><td><code>buscarSucursal</code></td><td>Sucursal más cercana (Haversine). <b>Solo CASO C</b> (cliente en otra zona), máx 1×. La precarga inicial de 3 usa este mismo endpoint.</td><td><code>POST /api/crm/tools/llamadas/buscarSucursal</code></td></tr>
+    <tr><td><code>agendar_cita</code></td><td>Registra la cita (tienda, agencia, fecha, hora). El backend valida horario/día; si <code>ok:false</code> devuelve sugerencia y el modelo se corrige. La cita <b>no se tipifica</b>.</td><td><code>POST /api/crm/tools/llamadas/agendarCita</code></td></tr>
+    <tr><td><code>hangUp</code></td><td>Tool <b>local</b> (sin HTTP): cuelga. Drena el audio antes de cerrar.</td><td>— (interno)</td></tr>
+    <tr><td><code>obtenerFechaHora</code></td><td>Existe en el catálogo, pero <b>la plantilla 139 NUNCA la invoca</b> (efectivamente muerta para esta campaña).</td><td><code>POST /api/crm/tools/utilidades/fechaHora</code></td></tr>
+    <tr><td><code>queryCorpus</code></td><td>RAG de Ultravox — <b>omitida con Gemini</b>.</td><td>—</td></tr>
+  </table></div>
+  <p class="loc">📁 <b>src/tools/generica.js</b> · <b>src/tools/geminiTools.js</b> · <b>src/tools/processTools.js:40</b> (reescritura de host con <code>TOOLS_BACKEND_URL</code>). Host destino: <code>app-api.ai-you.io</code>.</p>
+
+  <h3>7.4 · Webhooks al CRM de Target</h3>
+  <p>POST firmado con <b>HMAC-SHA256</b> (<code>X-AiYou-Signature/Event/Timestamp</code>). Se emiten <b>4</b> de los 6 documentados:</p>
+  <div class="tblwrap"><table>
+    <tr><th>Evento</th><th>¿Se emite?</th></tr>
+    <tr><td><code>session.created</code> · <code>session.connected</code> · <code>session.tool_call</code> · <code>session.ended</code></td><td><span class="pill p-opt">sí (4)</span></td></tr>
+    <tr><td><code>session.tipificacion</code> · <code>session.error</code></td><td><span class="pill p-req">NO se emiten</span></td></tr>
+  </table></div>
+  <div class="warn"><b>El CRM de Target responde <code>400 "Evento no reconocido"</code></b> (observado en runtime) a los 4 eventos <code>session.*</code>. Su endpoint <code>/api/bot/tipificar</code> probablemente esperaba <code>session.tipificacion</code> — el evento que la doc promete pero el código nunca emite (la tipificación viaja dentro de <code>tool_call</code>/<code>ended</code>). Desencuentro de contrato a alinear con Target.</div>
+  <p class="loc">📁 <b>src/services/webhook.service.js</b> · destino <code>crm.target.mastermold.dev/api/bot/tipificar</code></p>
+
+  <h3>7.5 · Config clave (env) y razones de cierre</h3>
+  <div class="tblwrap"><table>
+    <tr><th>Variable</th><th>Default</th><th>Nota</th></tr>
+    <tr><td><code>ENGINE</code></td><td>ultravox</td><td>Motor. Producción = Ultravox; piloto = <code>gemini</code>.</td></tr>
+    <tr><td><code>GEMINI_MODEL</code></td><td>gemini-3.1-flash-live-preview</td><td>—</td></tr>
+    <tr><td><code>GEMINI_VOICE</code></td><td>Aoede</td><td>Voz del piloto Gemini (ignora la voz de BD).</td></tr>
+    <tr><td><code>GEMINI_VAD_SILENCE_MS</code> / <code>PREFIX</code></td><td>500 / 200</td><td>VAD: silencio que cierra turno / padding.</td></tr>
+    <tr><td><code>GEMINI_GREET_FIRST</code></td><td>true</td><td>La agente habla primero.</td></tr>
+    <tr><td><code>MAX_CALL_SECONDS</code></td><td>300</td><td>Corte duro (nunca se alcanzó en producción).</td></tr>
+    <tr><td><code>GRACIA_TIPIFICACION_MS</code></td><td>6000</td><td>Ventana tras colgar para tipificar.</td></tr>
+    <tr><td><code>SUCURSALES_TIMEOUT_MS</code></td><td>8000</td><td>Timeout de la precarga.</td></tr>
+  </table></div>
+  <h4>Razones de cierre del motor Gemini (<code>motivo_fin</code>) — 11 valores</h4>
+  <p><code>hangup_caller</code>, <code>asterisk_close</code>, <code>asterisk_error</code>, <code>hangup_agente</code>, <code>max_call_seconds</code>, <code>gemini_go_away</code>, <code>gemini_error</code>, <code>gemini_close</code>, <code>gemini_send_error</code>, <code>gemini_connect_error</code>, <code>terminar_rest</code>. (El motor Ultravox además usa <code>agent_finished</code> y <code>ultravox_close</code>, los dominantes en producción — ver §2.)</p>
+  <p class="loc">📁 <b>src/config/env.js</b> · <b>src/ws/geminiEngine.js:236-375</b></p>
+
+  <h2 id="audio">8 · Pipeline de audio (camino Gemini)</h2>
+  <p>La telefonía <b>suprime el silencio</b> pero el VAD de Gemini necesita un <b>stream continuo</b> a 50 fps. Se resuelve con <b>dos "bombas" de 20 ms</b>:</p>
+  <div class="mermaidwrap">
+    <pre class="mermaid">
+flowchart LR
+  A["Asterisk<br/>8 kHz"] -->|inQ| UP{"¿frame?"}
+  UP -->|sí| RA["audio real"]
+  UP -->|no| SIL["SILENCIO<br/>(regla de oro)"]
+  RA --> U16["upsample 8→16k"]
+  SIL --> U16
+  U16 --> GEM["Gemini Live"]
+  GEM -->|outQ 24k| DOWN{"¿frame?"}
+  DOWN -->|sí| VOZ2["voz IA<br/>downsample 24→8k"]
+  DOWN -->|no| HUECO["nada → ver §10 hallazgo 1"]
+  VOZ2 --> AST2["Asterisk → 📱"]
+  classDef g fill:#3b82f622,stroke:#2563eb;
+  class A,GEM,AST2,U16,VOZ2 g;
+    </pre>
+  </div>
+  <ul>
+    <li><b>Rates:</b> 8 kHz telefonía ↔ 16 kHz subida / 24 kHz bajada. Frame 20 ms = 320 B @ 8 kHz. Codec real de producción: <code>pcm_s16le_16k</code> (99.9%).</li>
+    <li><b>Mensajes de control (JSON) — ambas direcciones:</b>
+      <br>Salientes (gateway→Asterisk): <code>transcript_final</code>, <code>transcript_partial</code>, <code>agent_started_speaking</code>, <code>agent_stopped_speaking</code>, <code>playback_clear_buffer</code> (barge-in), <code>tool_call</code>, <code>pong</code>.
+      <br>Entrantes (Asterisk→gateway): <code>session_end</code>, <code>ping</code>, <code>user_text</code>, <code>dtmf</code> (+ frames binarios de audio).</li>
+    <li><b>Saludo:</b> trigger de <b>texto</b> al abrir (esquiva el VAD). <b>Barge-in:</b> vacía <code>outQ</code> + <code>playback_clear_buffer</code>.</li>
+  </ul>
+  <p class="loc">📁 <b>src/ws/geminiEngine.js</b></p>
+
+  <h2 id="bd">9 · La base de datos</h2>
+  <div class="tblwrap"><table>
+    <tr><th>Tabla</th><th>Rol</th><th>Datos reales de Target (id 8)</th></tr>
+    <tr><td><code>empresa</code></td><td>Cliente + concurrencia.</td><td><code>canal=15</code>, <code>api_voz_activo=1</code>, <code>id_tool=2</code>, troncal <code>021/51</code></td></tr>
+    <tr><td><code>configuracion_api_voz</code></td><td>Auth + webhook.</td><td>webhook <code>crm.target.mastermold.dev/api/bot/tipificar</code> (con secret)</td></tr>
+    <tr><td><code>plantilla</code></td><td>El guion (prompt + formato).</td><td>1 → <b>id 139</b> (formato 72). <code>prompt_resultado</code> NULL.</td></tr>
+    <tr><td><code>formato_campo</code></td><td>Schema de variables.</td><td>28 campos, <b>5 obligatorios</b> (DEPARTAMENTO, PROVINCIA, DISTRITO, OFERTA_CREDICASH, lead_id)</td></tr>
+    <tr><td><code>tipificacion_llamada</code></td><td>Catálogo de resultados (árbol).</td><td>42 nodos, <b>27 hojas</b> seleccionables (4 ramas). <code>es_agendamiento_cita=1</code> solo en <b>id 542 "ACEPTA OFERTA"</b> (¡no en "CITA AGENDADA"!)</td></tr>
+    <tr><td><code>voz</code></td><td>Voz TTS.</td><td>Target: <b>voz id 7, ElevenLabs</b> (usada en Ultravox). Bajo Gemini se ignora → Aoede.</td></tr>
+    <tr><td><code>sucursal</code></td><td>Tiendas (precarga geográfica).</td><td><b>106</b>, 100% con lat/long (¡son strings!). Marcas CARSA/GMG. Top: Lima, Piura, Cañete.</td></tr>
+    <tr><td><code>api_voz_sesion</code></td><td>Registro de cada llamada.</td><td>40,412 filas. <code>variables_capturadas</code> vacío en 99.98% (ver §2).</td></tr>
+  </table></div>
+  <div class="mermaidwrap">
+    <pre class="mermaid">
+flowchart LR
+  E["empresa (8)"] --> P["plantilla (139)"]
+  P --> F["formato (72)"]
+  F --> FC["formato_campo<br/>28 campos · 5 req"]
+  E --> C["configuracion_api_voz<br/>token + webhook"]
+  E --> T["tipificacion_llamada<br/>42 nodos · 27 hojas"]
+  E --> S["sucursal (106)"]
+  E --> TO["tool (2 Generica)"]
+  E --> V["voz (7 · ElevenLabs)"]
+  X["cada llamada"] --> AVS["api_voz_sesion<br/>40,412 registros"]
+  classDef a fill:#3b82f622,stroke:#2563eb;
+  class E,P,F,FC,C,T,S,TO,V,X,AVS a;
+    </pre>
+  </div>
+
+  <h2 id="criticos">10 · Puntos críticos y hallazgos</h2>
+  <div class="warn"><b>1 · Continuidad de audio en bajada (bug real).</b> La bomba de <b>subida</b> siempre manda silencio de relleno; la de <b>bajada no</b>: si el motor deja de hablar, el socket hacia la telefonía se queda mudo y el Asterisk puede cortar (en pruebas, timeout de 2 s de <code>AudioSocket</code>). Fix: mandar silencio también en bajada. <span class="tag">verificado en código</span></div>
+  <div class="bad"><b>2 · Fuga de datos del lead.</b> En producción <code>variables_capturadas</code> y los campos de lead (<code>lead_id</code>, <code>phone_number</code>) llegan/quedan <b>vacíos</b> (99.98%). Impacto: sin trazabilidad ni reporte por lead. A revisar con la integración de Target.</div>
+  <div class="bad"><b>3 · Tipificación casi inexistente.</b> <b>93.3% de las llamadas sin tipificar.</b> El agente/flujo de tipificación automática apenas operó en la campaña masiva. Revisar si es problema del motor Ultravox de entonces o del guion.</div>
+  <div class="warn"><b>4 · Webhooks rechazados.</b> El CRM de Target responde <code>400</code> a los 4 eventos. Alinear contrato (ver §7.4).</div>
+  <div class="info"><b>5 · Concurrencia por réplica, no global.</b> El límite es <code>empresa.canal</code> (15), pero se cuenta <b>en memoria por réplica</b>: con N réplicas del gateway el tope real se multiplica (no hay conteo compartido). Al exceder → <code>503 agente_indisponible</code>, sin cola.</div>
+  <div class="info"><b>6 · Bandera de agendamiento contraintuitiva.</b> <code>es_agendamiento_cita=1</code> está en "ACEPTA OFERTA - PASARÁ A DESEMBOLSO" (542), <b>no</b> en "CITA AGENDADA" (543). Confirmar con negocio si es intencional (afecta el conteo de citas).</div>
+  <div class="info"><b>7 · BD compartida.</b> <code>aiyou_app</code> la usan otras cargas (cobranzas de Auna). Una query pesada ajena puede saturar el pool y afectar la precarga de sucursales de Target. Mitigado con <code>statement_timeout</code> a nivel de rol.</div>
+
+  <p class="loc" style="margin-top:34px">Fuentes: código <code>agente_voz/src/*</code> (verificado archivo:línea) · datos reales BD <code>aiyou_app</code> (40,412 sesiones de <code>api_voz_sesion</code>, catálogos de empresa 8, prompt de plantilla 139). Para el contrato campo-por-campo del JSON de entrada, ver <b>contrato-post-sesiones.html</b>. Elementos <span class="tag">inferencia</span> = infra de Target no verificable desde nuestro lado.</p>
+
+</div>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: dark ? 'dark' : 'default',
+    flowchart: { curve: 'basis', nodeSpacing: 45, rankSpacing: 55, useMaxWidth: true },
+    securityLevel: 'loose'
+  });
+</script>
+</body>
+</html>
