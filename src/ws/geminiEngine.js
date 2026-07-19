@@ -103,7 +103,10 @@ async function manejarConexion(asteriskWs, sesion) {
   const outQ = new AudioQueue(); // Gemini -> cliente (PCM ya al rate del cliente)
   const downsampler = sesion.sampleRate === 8000 ? new Downsampler24a8() : new Downsampler24a16();
 
-  let session = null; // sesion Live del SDK
+  let session = null; // sesion Live del SDK (la conexion activa)
+  let genConn = 0; // generacion de la conexion activa: los callbacks capturan su
+                   // id y se ignoran si dejaron de ser la activa (guard de reconexion).
+  let reconectando = false; // swap de reconexion en curso: pausa la subida.
   let listo = false; // setupComplete recibido: arrancan las bombas
   let cerrado = false;
   let finalizando = false;
@@ -130,6 +133,7 @@ async function manejarConexion(asteriskWs, sesion) {
   let bytesDown = 0;
   let framesWritten = 0;
   let framesSilencioBajada = 0;
+  let reconexiones = 0;
 
   const enviarAsterisk = (obj) => {
     if (asteriskWs.readyState === WebSocket.OPEN) {
@@ -247,7 +251,8 @@ async function manejarConexion(asteriskWs, sesion) {
     logger.info(
       `[gemini] cerrando sesion=${sesion.session_id} motivo=${motivo} duracion=${duracionSegundos}s ` +
       `RESUMEN frames_subida=${framesUp} silencio_relleno=${silenceUp} audio_msgs_gemini=${audioMsgsDown} ` +
-      `bytes_gemini=${bytesDown} frames_a_cliente=${framesWritten} silencio_bajada=${framesSilencioBajada}`
+      `bytes_gemini=${bytesDown} frames_a_cliente=${framesWritten} silencio_bajada=${framesSilencioBajada} ` +
+      `reconexiones=${reconexiones}`
     );
     store.actualizar(sesion.session_id, { estado: "finalizada", duracionSegundos });
 
@@ -394,22 +399,27 @@ async function manejarConexion(asteriskWs, sesion) {
       // que resolviera el await de connect (carrera de microtasks): saltar tick.
       if (cerrado || !session) return;
       // SUBIDA: frame real o silencio digital, SIEMPRE (regla de oro #1).
-      let frame = inQ.popFrame(frameBytes);
-      if (frame === null) {
-        frame = SILENCIO;
-        silenceUp++;
-      } else {
-        framesUp++;
-      }
-      const audio16k = sesion.sampleRate === 8000 ? upsample8to16(frame) : frame;
-      try {
-        session.sendRealtimeInput({
-          audio: { data: audio16k.toString("base64"), mimeType: "audio/pcm;rate=16000" },
-        });
-      } catch (e) {
-        logger.warn(`[gemini] sendRealtimeInput: ${e.message}`);
-        cerrar("gemini_send_error");
-        return;
+      // Durante un swap de reconexion se PAUSA la subida: la conexion vieja
+      // esta muriendo y la nueva aun no dio setupComplete. La bajada sigue
+      // (silencio de relleno) para no dejar hueco en el stream del cliente.
+      if (!reconectando) {
+        let frame = inQ.popFrame(frameBytes);
+        if (frame === null) {
+          frame = SILENCIO;
+          silenceUp++;
+        } else {
+          framesUp++;
+        }
+        const audio16k = sesion.sampleRate === 8000 ? upsample8to16(frame) : frame;
+        try {
+          session.sendRealtimeInput({
+            audio: { data: audio16k.toString("base64"), mimeType: "audio/pcm;rate=16000" },
+          });
+        } catch (e) {
+          logger.warn(`[gemini] sendRealtimeInput: ${e.message}`);
+          cerrar("gemini_send_error");
+          return;
+        }
       }
       // BAJADA: un frame por tick. Si hay audio del agente se manda; si no y
       // DOWNLINK_SILENCE esta activo, se rellena con silencio para sostener el
@@ -453,7 +463,13 @@ async function manejarConexion(asteriskWs, sesion) {
 
     if (msg.setupComplete) {
       listo = true;
-      logger.info(`[gemini] sesion lista sesion=${sesion.session_id} model=${cfg.model} tools=${functionDeclarations.length}`);
+      if (reconectando) {
+        // La conexion nueva de una reconexion quedo lista: reanudar la subida.
+        reconectando = false;
+        logger.info(`[gemini] reconexion lista sesion=${sesion.session_id} gen=${genConn}`);
+      } else {
+        logger.info(`[gemini] sesion lista sesion=${sesion.session_id} model=${cfg.model} tools=${functionDeclarations.length}`);
+      }
       arrancarBombas();
       return;
     }
@@ -530,7 +546,13 @@ async function manejarConexion(asteriskWs, sesion) {
 
     if (msg.goAway) {
       logger.warn(`[gemini] go_away sesion=${sesion.session_id} timeLeft=${msg.goAway.timeLeft || "?"}`);
-      cerrar("gemini_go_away");
+      // Con GEMINI_RESUMPTION=1: reconectar de forma transparente preservando el
+      // contexto, sin cortar la llamada. Sin el flag: cerrar como siempre.
+      if (env.gemini.resumption && !cerrado) {
+        reconectar();
+      } else {
+        cerrar("gemini_go_away");
+      }
       return;
     }
     if (msg.sessionResumptionUpdate?.newHandle) {
@@ -579,29 +601,88 @@ async function manejarConexion(asteriskWs, sesion) {
   asteriskWs.on("close", () => finalizarConGracia("asterisk_close"));
   asteriskWs.on("error", (e) => { logger.warn(`[gemini] asterisk error: ${e.message}`); cerrar("asterisk_error"); });
 
-  // ---- Abrir la sesion Gemini Live ----
-  try {
+  // Abre una conexion Live a Gemini y cablea sus callbacks con un GUARD DE
+  // GENERACION: cada conexion reclama un id (genConn) al abrirse; los callbacks
+  // que capturan un id viejo se ignoran tras un swap de reconexion, para que el
+  // onclose/onerror de la conexion saliente NO tumbe la llamada. `esReconexion`
+  // salta el saludo y el webhook session.connected (van solo en la 1ra conexion).
+  const conectarGemini = (resumptionHandle, esReconexion) => {
+    const miGen = ++genConn;
     // Import perezoso: si ENGINE=ultravox este modulo nunca carga el SDK.
     const { GoogleGenAI } = require("@google/genai");
     const ai = new GoogleGenAI({ apiKey: env.gemini.apiKey });
-    session = await ai.live.connect({
+    const cfgLive = construirLiveConfig(cfg, functionDeclarations);
+    // sessionResumption solo con el flag: sin handle abre limpio; con handle
+    // restaura el contexto de la conversacion (deuda #7, doc oficial de Gemini).
+    if (env.gemini.resumption) {
+      cfgLive.sessionResumption = resumptionHandle ? { handle: resumptionHandle } : {};
+    }
+    return ai.live.connect({
       model: cfg.model,
-      config: construirLiveConfig(cfg, functionDeclarations),
+      config: cfgLive,
       callbacks: {
         onopen: () => {
+          if (miGen !== genConn) return; // conexion vieja: ignorar
           store.actualizar(sesion.session_id, { estado: "en_curso" });
-          if (sesion.webhook) {
+          if (!esReconexion && sesion.webhook) {
             enviarWebhook(sesion.webhook, "session.connected", {
               session_id: sesion.session_id,
               variables: sesion.variables || {},
             });
           }
         },
-        onmessage: onMensajeGemini,
-        onerror: (e) => { logger.warn(`[gemini] error WS: ${e?.message || e}`); cerrar("gemini_error"); },
-        onclose: (e) => { if (!cerrado) logger.info(`[gemini] WS cerrado (${e?.reason || "sin motivo"})`); cerrar("gemini_close"); },
+        onmessage: (m) => { if (miGen === genConn) onMensajeGemini(m); },
+        onerror: (e) => {
+          if (miGen !== genConn) return;
+          logger.warn(`[gemini] error WS: ${e?.message || e}`);
+          cerrar("gemini_error");
+        },
+        onclose: (e) => {
+          if (miGen !== genConn) return;
+          if (!cerrado) logger.info(`[gemini] WS cerrado (${e?.reason || "sin motivo"})`);
+          cerrar("gemini_close");
+        },
       },
     });
+  };
+
+  // Reconexion transparente al goAway (solo con GEMINI_RESUMPTION=1): abre una
+  // conexion nueva con el resumption handle, intercambia `session` y cierra la
+  // vieja. WS#1 (Asterisk) queda intacto; la bomba sigue viva; el silencio de
+  // bajada tapa el hueco; maxCallTimer NO se reinicia (el tope corre desde el
+  // inicio de la llamada). `reconectando` pausa la subida hasta el setupComplete
+  // de la nueva conexion. Red de seguridad: si no llega, se cierra a los 8s.
+  const reconectar = async () => {
+    if (reconectando || cerrado) return;
+    reconectando = true;
+    const handle = sesion.geminiResumptionHandle || null;
+    const vieja = session;
+    try {
+      const nueva = await conectarGemini(handle, true); // sube genConn: la vieja queda ignorada
+      if (cerrado) { try { nueva.close(); } catch (_) {} return; }
+      session = nueva; // swap: la bomba usa la conexion nueva
+      inQ.clear(); // descarta el backlog del swap (una rafaga rompe el VAD)
+      reconexiones++;
+      try { if (vieja) vieja.close(); } catch (_) {}
+      logger.info(`[gemini] reconectado sesion=${sesion.session_id} handle=${handle ? "si" : "no"} gen=${genConn}`);
+    } catch (e) {
+      reconectando = false;
+      logger.error(`[gemini] reconexion fallo sesion=${sesion.session_id}: ${e.message}`);
+      cerrar("gemini_reconnect_error");
+      return;
+    }
+    // Si la conexion nueva nunca da setupComplete, no dejar la llamada muda.
+    setTimeout(() => {
+      if (!cerrado && reconectando) {
+        logger.error(`[gemini] reconexion sin setupComplete sesion=${sesion.session_id}`);
+        cerrar("gemini_reconnect_timeout");
+      }
+    }, 8000);
+  };
+
+  // ---- Abrir la sesion Gemini Live (conexion inicial) ----
+  try {
+    session = await conectarGemini(null, false);
   } catch (e) {
     logger.error(`[gemini] connect fallo sesion=${sesion.session_id}: ${e.message}`);
     cerrar("gemini_connect_error");

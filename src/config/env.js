@@ -36,6 +36,12 @@ const env = {
     // NO dispara agent_started_speaking, NO setea isAlive (no enmascara nuestro
     // heartbeat) y NO pasa por outQ (no afecta el drenaje de hangUp).
     downlinkSilence: process.env.DOWNLINK_SILENCE !== "0",
+    // Reconexion transparente al goAway de Gemini (~cada 10min rota la conexion).
+    // Con 1: configura sessionResumption para recibir handles y, al llegar goAway,
+    // reconecta preservando el contexto en vez de cerrar la llamada. Solo relevante
+    // si MAX_CALL_SECONDS supera ~600 (con 300s cortamos antes del goAway).
+    // Default 0 (opt-in): con off, goAway cierra la sesion como siempre.
+    resumption: process.env.GEMINI_RESUMPTION === "1",
   },
   ultravox: {
     baseUrl: process.env.ULTRAVOX_BASE_URL || "https://api.ultravox.ai/api",
