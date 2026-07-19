@@ -1,19 +1,18 @@
 // Tool genérica portada del voice-backend (aiyou/aiyou-voice-backend/src/tools/generica.js).
 // CommonJS. Los placeholders {{id_empresa}} y {{provider_call_id}} los resuelve processTools.
 //
+// NOTA: `queryCorpus` se retiró. Era un built-in de Ultravox (RAG) sin
+// `temporaryTool`, o sea sin endpoint HTTP: con Gemini se omitía en cada sesion
+// (log "tool sin equivalente HTTP omitida") y nunca llegaba al modelo. Ninguna
+// plantilla de las empresas con api_voz activo la usaba. Si se vuelve a
+// ENGINE=ultravox y se necesita RAG, restaurar la entrada con su corpus_id.
+//
 // NOTA: `obtenerPlanesDisponibles` se retiró. Venía copiada de la tool de Bitel
 // (tmp-server-mapping/tools/bitel.js) y apuntaba a GET /api/crm/tools/catalogo,
 // ruta que NO existe en app-api: el catálogo se monta como /api/crm/catalogo
 // detrás de authMiddleware, y saca el id_empresa del JWT (que las tools de voz
 // no tienen). Devolvía 404 en todas las llamadas, con ambos motores.
 const genericaTools = [
-  {
-    toolName: "queryCorpus",
-    parameterOverrides: {
-      corpus_id: "0d68b754-32d0-4c9d-966c-0e17aaeab8e5",
-      max_results: 3,
-    },
-  },
   {
     temporaryTool: {
       modelToolName: "tipificarLlamada",
