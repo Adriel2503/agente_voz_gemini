@@ -180,7 +180,9 @@ async function crearSesion(req, res) {
     const elegido = elegirCandidato(candidatos, store.contarPorApiKey());
     if (!elegido) {
       const conteo = store.contarPorApiKey();
-      const detalle = candidatos.map((c) => `${String(c.apiKey).slice(0, 12)}…=${conteo.get(c.apiKey) || 0}/${c.canal}`).join(" ");
+      // No se loguea la key (ni un fragmento): solo el indice del candidato y su
+      // ocupacion/cupo, que es todo lo que hace falta para diagnosticar el rechazo.
+      const detalle = candidatos.map((c, i) => `#${i}=${conteo.get(c.apiKey) || 0}/${c.canal}`).join(" ");
       logger.warn(`[sesiones] RECHAZADO 503 sin canales empresa=${idEmpresa} ocupacion: ${detalle}`);
       res.set("Retry-After", "30");
       return err(res, 503, "agente_indisponible", "Sin canales disponibles. Reintente en unos segundos.");
