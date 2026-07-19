@@ -29,6 +29,13 @@ const env = {
     // Red de seguridad: corta la sesion Gemini pase lo que pase (evita sesiones
     // zombie gastando API si el cliente nunca cierra).
     maxCallSeconds: parseInt(process.env.MAX_CALL_SECONDS, 10) || 300,
+    // Silencio de bajada: cuando el agente NO habla, manda un frame de silencio
+    // hacia el cliente en cada tick de 20ms para sostener el stream a 50fps.
+    // Evita que el Asterisk del integrador nos corte por idle en SU lado y
+    // mantiene el timing del jitter buffer. 1 = activado (default). El silencio
+    // NO dispara agent_started_speaking, NO setea isAlive (no enmascara nuestro
+    // heartbeat) y NO pasa por outQ (no afecta el drenaje de hangUp).
+    downlinkSilence: process.env.DOWNLINK_SILENCE !== "0",
   },
   ultravox: {
     baseUrl: process.env.ULTRAVOX_BASE_URL || "https://api.ultravox.ai/api",

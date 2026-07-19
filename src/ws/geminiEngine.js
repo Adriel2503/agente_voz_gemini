@@ -92,6 +92,12 @@ async function manejarConexion(asteriskWs, sesion) {
   // Frame de 20 ms del lado cliente: 320 B @ 8 kHz o 640 B @ 16 kHz.
   const frameBytes = sesion.sampleRate === 8000 ? 320 : 640;
   const SILENCIO = Buffer.alloc(frameBytes);
+  // Silencio de bajada precomputado EN EL CODEC DEL CLIENTE. OJO: en mulaw el
+  // silencio NO es 0x00 (eso decodifica a fondo de escala = zumbido); es
+  // pcm16ToMuLaw(ceros) = 0xFF. En PCM crudo los ceros ya son silencio real.
+  // Se calcula una sola vez (no reencodear 50 veces/seg).
+  const bajadaSilencio = env.gemini.downlinkSilence;
+  const SILENCIO_BAJADA = esMulaw ? pcm16ToMuLaw(SILENCIO) : SILENCIO;
 
   const inQ = new AudioQueue(); // cliente -> Gemini (PCM al rate del cliente)
   const outQ = new AudioQueue(); // Gemini -> cliente (PCM ya al rate del cliente)
@@ -123,6 +129,7 @@ async function manejarConexion(asteriskWs, sesion) {
   let audioMsgsDown = 0;
   let bytesDown = 0;
   let framesWritten = 0;
+  let framesSilencioBajada = 0;
 
   const enviarAsterisk = (obj) => {
     if (asteriskWs.readyState === WebSocket.OPEN) {
@@ -240,7 +247,7 @@ async function manejarConexion(asteriskWs, sesion) {
     logger.info(
       `[gemini] cerrando sesion=${sesion.session_id} motivo=${motivo} duracion=${duracionSegundos}s ` +
       `RESUMEN frames_subida=${framesUp} silencio_relleno=${silenceUp} audio_msgs_gemini=${audioMsgsDown} ` +
-      `bytes_gemini=${bytesDown} frames_a_cliente=${framesWritten}`
+      `bytes_gemini=${bytesDown} frames_a_cliente=${framesWritten} silencio_bajada=${framesSilencioBajada}`
     );
     store.actualizar(sesion.session_id, { estado: "finalizada", duracionSegundos });
 
@@ -404,13 +411,25 @@ async function manejarConexion(asteriskWs, sesion) {
         cerrar("gemini_send_error");
         return;
       }
-      // BAJADA: un frame por tick; si no hay audio pendiente, nada (el cliente
-      // no necesita stream continuo).
+      // BAJADA: un frame por tick. Si hay audio del agente se manda; si no y
+      // DOWNLINK_SILENCE esta activo, se rellena con silencio para sostener el
+      // stream a 50fps (evita corte por idle del lado del integrador y mantiene
+      // el timing). El silencio de relleno respeta 3 invariantes:
+      //   - NO toca agenteHablando ni emite agent_started_speaking (turnos exactos).
+      //   - NO setea isAlive: si lo hiciera, un socket realmente muerto nunca
+      //     lo detectaria el heartbeat (index.js). El silencio es para el
+      //     heartbeat del integrador, no para el nuestro.
+      //   - NO pasa por outQ ni toca ultimoAudioEn (no afecta debeColgar).
       const out = outQ.popFrame(frameBytes);
-      if (out && asteriskWs.readyState === WebSocket.OPEN) {
-        asteriskWs.isAlive = true;
-        asteriskWs.send(esMulaw ? pcm16ToMuLaw(out) : out);
-        framesWritten++;
+      if (asteriskWs.readyState === WebSocket.OPEN) {
+        if (out) {
+          asteriskWs.isAlive = true;
+          asteriskWs.send(esMulaw ? pcm16ToMuLaw(out) : out);
+          framesWritten++;
+        } else if (bajadaSilencio) {
+          asteriskWs.send(SILENCIO_BAJADA);
+          framesSilencioBajada++;
+        }
       }
 
       // El agente pidio colgar: cerrar recien cuando termino de sonar su
