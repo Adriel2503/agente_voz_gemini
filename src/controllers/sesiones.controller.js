@@ -213,6 +213,9 @@ async function crearSesion(req, res) {
       // ElevenLabs/Ultravox: con Gemini se ignora y manda GEMINI_VOICE.
       ({ callId, joinUrl, geminiConfig } = await motorActivo().crearLlamadaServerWs({
         apiKey,
+        // Key de Gemini por empresa (null = fallback a GEMINI_API_KEY global).
+        // Ultravox ignora este parametro. Ver docs/keys-gemini-por-empresa.md.
+        geminiApiKey: empresa.gemini_api_key || null,
         systemPrompt,
         voice: esGemini() ? null : voiceCodeFinal,
         sampleRate,

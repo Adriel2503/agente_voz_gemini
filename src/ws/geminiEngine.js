@@ -610,7 +610,9 @@ async function manejarConexion(asteriskWs, sesion) {
     const miGen = ++genConn;
     // Import perezoso: si ENGINE=ultravox este modulo nunca carga el SDK.
     const { GoogleGenAI } = require("@google/genai");
-    const ai = new GoogleGenAI({ apiKey: env.gemini.apiKey });
+    // Key por empresa (la resolvio gemini.service con fallback a la global).
+    // El `|| env.gemini.apiKey` es red de seguridad por si cfg no la trae.
+    const ai = new GoogleGenAI({ apiKey: cfg.apiKey || env.gemini.apiKey });
     const cfgLive = construirLiveConfig(cfg, functionDeclarations);
     // sessionResumption solo con el flag: sin handle abre limpio; con handle
     // restaura el contexto de la conversacion (deuda #7, doc oficial de Gemini).

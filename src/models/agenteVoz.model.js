@@ -7,11 +7,12 @@ class AgenteVozModel {
     this.connection = dbConnection || pool;
   }
 
-  // empresa: key Ultravox principal (por empresa), cupo de canales de esa key,
+  // empresa: key Ultravox principal (por empresa), key de Gemini por empresa
+  // (fallback a GEMINI_API_KEY global si es NULL), cupo de canales de esa key,
   // gate de voz y tool por defecto.
   async getEmpresa(idEmpresa) {
     const [rows] = await this.connection.execute(
-      `SELECT id, ultravox_api_key, canal, api_voz_activo, id_tool
+      `SELECT id, ultravox_api_key, gemini_api_key, canal, api_voz_activo, id_tool
        FROM empresa WHERE id = ? AND estado_registro = 1`,
       [idEmpresa]
     );

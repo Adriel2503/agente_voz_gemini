@@ -16,7 +16,8 @@ const logger = require("../config/logger.js");
 // functionDeclarations y ejecuta sus toolCalls (ver tools/geminiTools.js).
 // Mismo shape de retorno que Ultravox: { callId, joinUrl } (joinUrl = null).
 async function crearLlamadaServerWs({
-  apiKey, // eslint-disable-line no-unused-vars -- clave sintetica de canal, la real es env.gemini.apiKey
+  apiKey, // eslint-disable-line no-unused-vars -- clave sintetica de canal, la real es geminiApiKey/env
+  geminiApiKey = null, // key de Gemini de la empresa; null = fallback a la global del gateway
   systemPrompt,
   voice = null,
   selectedTools = [],
@@ -24,9 +25,12 @@ async function crearLlamadaServerWs({
   languageHint = "es", // eslint-disable-line no-unused-vars -- el idioma sale de env.gemini.language
   velocidad = null, // eslint-disable-line no-unused-vars -- sin equivalente en Gemini Live
 }) {
-  if (!env.gemini.apiKey) {
+  // Key efectiva: la de la empresa si esta cargada, si no la global del gateway.
+  // Ver docs/keys-gemini-por-empresa.md.
+  const keyEfectiva = geminiApiKey || env.gemini.apiKey;
+  if (!keyEfectiva) {
     // Mensaje con "Gemini respondio 503" para que clasificarError lo mapee a "caido".
-    throw new Error("Gemini respondio 503: falta GEMINI_API_KEY en el gateway");
+    throw new Error("Gemini respondio 503: la empresa no tiene gemini_api_key y falta GEMINI_API_KEY global");
   }
 
   const callId = `gem_${crypto.randomBytes(8).toString("hex")}`;
@@ -35,6 +39,7 @@ async function crearLlamadaServerWs({
     joinUrl: null, // Gemini no tiene URL de sesion previa; el engine conecta directo
     geminiConfig: {
       model: env.gemini.model,
+      apiKey: keyEfectiva, // key real (empresa o global) que usa el engine para conectar
       systemPrompt: systemPrompt || "",
       voice: voice && String(voice).trim() ? voice : env.gemini.voice,
       sampleRate, // 8000 (mulaw_8k) o 16000 (pcm_s16le_16k): decide el resampleo del engine
