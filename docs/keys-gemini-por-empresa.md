@@ -68,10 +68,11 @@ Opciones para ese caso (cuando/si aparece):
 
 ### Observabilidad para decidir
 
-- **Guardar el `reason` del cierre en `metadata`** al cerrar la sesión
-  (hoy `onclose` lo loguea como `WS cerrado (${reason})` pero no se persiste).
-  Con eso, `api_voz_sesion.metadata` diría exactamente si fue RESOURCE_EXHAUSTED
-  / TPM u otra cosa, sin depender de los logs de EasyPanel.
+- **Guardar el `reason` del cierre en `metadata`** al cerrar la sesión —
+  **hecho**. `onclose`/`onerror` capturan `{ code, reason }` (o `error`) crudo de
+  Gemini y `cerrar()` los persiste en `api_voz_sesion.metadata.cierre_detalle`
+  (más `metadata.reconexiones`). Con eso se ve exactamente si fue
+  RESOURCE_EXHAUSTED / TPM u otra cosa, sin depender de los logs de EasyPanel.
 - **Monitorear `gemini_close` por empresa** para detectar quién está topando su
   TPM y necesita las opciones de arriba.
 

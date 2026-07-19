@@ -134,6 +134,11 @@ async function manejarConexion(asteriskWs, sesion) {
   let framesWritten = 0;
   let framesSilencioBajada = 0;
   let reconexiones = 0;
+  // Detalle crudo del ultimo cierre/error de Gemini (code + reason del WS, o
+  // message del onerror). Se persiste en metadata para diagnosticar el motivo
+  // real del gemini_close (p.ej. RESOURCE_EXHAUSTED / TPM) sin depender de los
+  // logs. Ver docs/keys-gemini-por-empresa.md ("Observabilidad para decidir").
+  let cierreDetalle = null;
 
   const enviarAsterisk = (obj) => {
     if (asteriskWs.readyState === WebSocket.OPEN) {
@@ -315,7 +320,15 @@ async function manejarConexion(asteriskWs, sesion) {
           id_tipificacion: sesion.tipificacionFinal?.id || null,
           tipificacion: sesion.tipificacionFinal || null,
           // Trazabilidad del motor sin cambio de schema (columna metadata jsonb).
-          metadata: { ...(sesion.metadata || {}), motor: "gemini" },
+          // cierre_detalle guarda el code/reason crudo de Gemini para diagnosticar
+          // los gemini_close (TPM/quota) desde la BD; reconexiones cuenta los swaps
+          // por goAway. Ambos son opcionales: se omiten si no aplican.
+          metadata: {
+            ...(sesion.metadata || {}),
+            motor: "gemini",
+            ...(cierreDetalle ? { cierre_detalle: cierreDetalle } : {}),
+            ...(reconexiones ? { reconexiones } : {}),
+          },
           fecha_fin: new Date().toISOString(),
         });
       } catch (e) {
@@ -636,12 +649,16 @@ async function manejarConexion(asteriskWs, sesion) {
         onmessage: (m) => { if (miGen === genConn) onMensajeGemini(m); },
         onerror: (e) => {
           if (miGen !== genConn) return;
+          cierreDetalle = { error: e?.message || String(e) };
           logger.warn(`[gemini] error WS: ${e?.message || e}`);
           cerrar("gemini_error");
         },
         onclose: (e) => {
           if (miGen !== genConn) return;
-          if (!cerrado) logger.info(`[gemini] WS cerrado (${e?.reason || "sin motivo"})`);
+          // El code/reason del WS suele traer el motivo real (RESOURCE_EXHAUSTED,
+          // quota, etc.). Se guarda para metadata ademas de loguearlo.
+          cierreDetalle = { code: e?.code ?? null, reason: e?.reason || null };
+          if (!cerrado) logger.info(`[gemini] WS cerrado code=${e?.code ?? "?"} (${e?.reason || "sin motivo"})`);
           cerrar("gemini_close");
         },
       },
