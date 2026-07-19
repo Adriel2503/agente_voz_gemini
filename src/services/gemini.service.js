@@ -1,29 +1,25 @@
-// Cliente del motor de voz Gemini Live. Espejo del contrato de
-// ultravox.service.js para que el controller ramifique con el minimo cambio.
+// Cliente del motor de voz Gemini Live.
 //
-// Diferencia clave con Ultravox: NO hay paso HTTP previo que devuelva un
-// joinUrl. La sesion Gemini se abre recien cuando el integrador conecta su
-// WSS (ws/geminiEngine.js hace ai.live.connect). Aqui solo se valida config
-// y se arma el contexto que el engine necesita.
+// NO hay paso HTTP previo que devuelva un joinUrl: la sesion Gemini se abre
+// recien cuando el integrador conecta su WSS (ws/geminiEngine.js hace
+// ai.live.connect). Aqui solo se valida config y se arma el contexto que el
+// engine necesita.
 const crypto = require("crypto");
 const env = require("../config/env.js");
 const store = require("../sessions/store.js");
 const logger = require("../config/logger.js");
 
-// Crea la "llamada" Gemini: valida la key global, genera un callId propio y
+// Crea la "llamada" Gemini: resuelve la key efectiva, genera un callId propio y
 // devuelve la config para el engine. `selectedTools` (ya procesadas por
 // processTools) viajan en geminiConfig: el engine las traduce a
 // functionDeclarations y ejecuta sus toolCalls (ver tools/geminiTools.js).
-// Mismo shape de retorno que Ultravox: { callId, joinUrl } (joinUrl = null).
+// Devuelve { callId, joinUrl: null, geminiConfig }.
 async function crearLlamadaServerWs({
-  apiKey, // eslint-disable-line no-unused-vars -- clave sintetica de canal, la real es geminiApiKey/env
   geminiApiKey = null, // key de Gemini de la empresa; null = fallback a la global del gateway
   systemPrompt,
   voice = null,
   selectedTools = [],
   sampleRate = env.audioSampleRate,
-  languageHint = "es", // eslint-disable-line no-unused-vars -- el idioma sale de env.gemini.language
-  velocidad = null, // eslint-disable-line no-unused-vars -- sin equivalente en Gemini Live
 }) {
   // Key efectiva: la de la empresa si esta cargada, si no la global del gateway.
   // Ver docs/keys-gemini-por-empresa.md.
@@ -48,13 +44,11 @@ async function crearLlamadaServerWs({
   };
 }
 
-// Inyecta texto a una sesion viva. Ultravox lo hace por REST; en Gemini la
-// sesion vive en este mismo proceso, asi que se resuelve via el store: el
-// engine expone sesion.engineEnviarTexto al conectar.
-async function sendDataMessage(apiKey, callId, { text }) {
+// Inyecta texto a una sesion Gemini viva. La sesion vive en este mismo proceso,
+// asi que se resuelve via el store: el engine expone sesion.engineEnviarTexto al
+// conectar. El store indexa por session_id; buscamos la sesion por su callId.
+async function sendDataMessage(callId, { text }) {
   if (!text) return;
-  // El store indexa por session_id; para respetar la firma (apiKey, callId)
-  // de Ultravox buscamos la sesion por su callId.
   const sesion = store.buscar((s) => s.callId === callId);
   if (!sesion || typeof sesion.engineEnviarTexto !== "function") {
     logger.warn(`[gemini] sendDataMessage sin sesion viva callId=${callId}`);
@@ -63,7 +57,7 @@ async function sendDataMessage(apiKey, callId, { text }) {
   sesion.engineEnviarTexto(text);
 }
 
-// Misma convencion que ultravox.clasificarError:
+// Clasifica un error para decidir el HTTP:
 //   "caido"     -> 503 + Retry-After (transitorio: red, 5xx, cuota)
 //   "rechazado" -> 502 (4xx: no ayuda reintentar)
 //   null        -> 500 generico

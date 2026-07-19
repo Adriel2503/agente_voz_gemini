@@ -16,7 +16,7 @@ function crear(ctx) {
     creada_en: Date.now(),
     estado: "pendiente",
     conectado: false,
-    ...ctx, // idEmpresa, apiKey, callId, joinUrl, idPlantilla, codec, metadata, tipificaciones, webhook
+    ...ctx, // idEmpresa, callId, idPlantilla, codec, metadata, tipificaciones, webhook
     session_id,
   };
   sesiones.set(session_id, registro);
@@ -48,16 +48,13 @@ function purgarExpiradas(maxEdadMs = 30000) {
   }
 }
 
-// Canales ocupados por cada apiKey Ultravox = sesiones activas (no finalizadas)
-// agrupadas por su apiKey. NOTA: en memoria = conteo por instancia. Si se escala a
-// N replicas, este tope NO es global (ver nota del store arriba).
-function contarPorApiKey() {
-  const conteo = new Map();
-  for (const s of sesiones.values()) {
-    if (!s.apiKey || s.estado === "finalizada") continue;
-    conteo.set(s.apiKey, (conteo.get(s.apiKey) || 0) + 1);
-  }
-  return conteo;
+// Total de sesiones activas (no finalizadas) en esta instancia. Solo para traza
+// (el log del POST /sesiones). Ya no hay tope por canal: Gemini limita por TPM,
+// no por canales concurrentes (ver docs/remover-ultravox.md, decision A).
+function contarActivas() {
+  let n = 0;
+  for (const s of sesiones.values()) if (s.estado !== "finalizada") n++;
+  return n;
 }
 
-module.exports = { crear, obtener, actualizar, eliminar, buscar, purgarExpiradas, contarPorApiKey, nuevoSessionId };
+module.exports = { crear, obtener, actualizar, eliminar, buscar, purgarExpiradas, contarActivas, nuevoSessionId };

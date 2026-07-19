@@ -1,6 +1,6 @@
 // Puente de audio bidireccional: Asterisk (integrador) <-> Gemini Live.
-// Rama de motor alternativa a audioBridge.js (Ultravox). Porta la logica
-// validada en produccion del bridge Go (asterisk-bridge) y del demo Python.
+// Unico motor del gateway. Porta la logica validada en produccion del bridge Go
+// (asterisk-bridge) y del demo Python.
 //
 //   Asterisk WSS ──mulaw/pcm──► [inQ]──tick 20ms──► PCM16 16k ──► Gemini Live
 //   Asterisk WSS ◄──mulaw/pcm──[outQ]◄─tick 20ms◄── PCM16 24k ◄── Gemini Live
@@ -14,9 +14,8 @@
 //  3. Barge-in = vaciar outQ al instante.
 //  4. Cerrar SIEMPRE ambos extremos (fuga de sockets = fuga de FDs).
 //
-// El protocolo hacia el cliente NO cambia respecto de Ultravox: mismos JSON
-// (transcript_partial/final, agent_started/stopped_speaking,
-// playback_clear_buffer, pong) — el integrador no nota el cambio de motor.
+// El protocolo hacia el cliente son estos JSON: transcript_partial/final,
+// agent_started/stopped_speaking, playback_clear_buffer, pong.
 const WebSocket = require("ws");
 const { muLawToPcm16, pcm16ToMuLaw } = require("../lib/g711.js");
 const { AudioQueue } = require("../lib/audioQueue.js");
@@ -621,7 +620,7 @@ async function manejarConexion(asteriskWs, sesion) {
   // salta el saludo y el webhook session.connected (van solo en la 1ra conexion).
   const conectarGemini = (resumptionHandle, esReconexion) => {
     const miGen = ++genConn;
-    // Import perezoso: si ENGINE=ultravox este modulo nunca carga el SDK.
+    // Import perezoso del SDK (se carga al primer connect, no al requerir el modulo).
     const { GoogleGenAI } = require("@google/genai");
     // Key por empresa (la resolvio gemini.service con fallback a la global).
     // El `|| env.gemini.apiKey` es red de seguridad por si cfg no la trae.

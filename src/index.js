@@ -8,7 +8,7 @@ const logger = require("./config/logger.js");
 const { testConnection } = require("./config/db.js");
 const { resolveEmpresaFromToken } = require("./middlewares/apiVozToken.middleware.js");
 const sesionesRoutes = require("./routes/sesiones.routes.js");
-const { manejarConexion } = require("./ws/audioBridge.js");
+const { manejarConexion } = require("./ws/geminiEngine.js");
 const store = require("./sessions/store.js");
 
 const app = express();
