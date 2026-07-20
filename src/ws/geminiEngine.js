@@ -148,7 +148,7 @@ async function manejarConexion(asteriskWs, sesion) {
 
   const registrarTranscript = (rol, texto) => {
     if (!texto) return;
-    logger.info(`[gemini] transcript final sesion=${sesion.session_id} rol=${rol} texto="${texto}"`);
+    logger.debug(`[gemini] transcript final sesion=${sesion.session_id} rol=${rol} texto="${texto}"`);
     sesion.transcripcion.push({ rol, ts: (Date.now() - iniciadoEn) / 1000, texto });
     enviarAsterisk({ type: "transcript_final", rol, texto });
   };
@@ -208,7 +208,7 @@ async function manejarConexion(asteriskWs, sesion) {
     for (const c of calls) {
       const nombre = c.name;
       const args = c.args || {};
-      logger.info(`[gemini] tool del agente sesion=${sesion.session_id} name=${nombre} args=${JSON.stringify(args)}`);
+      logger.debug(`[gemini] tool del agente sesion=${sesion.session_id} name=${nombre} args=${JSON.stringify(args)}`);
       enviarAsterisk({ type: "tool_call", name: nombre, args });
       if (sesion.webhook) {
         enviarWebhook(sesion.webhook, "session.tool_call", {
@@ -377,7 +377,7 @@ async function manejarConexion(asteriskWs, sesion) {
       return;
     }
     avisarHangup();
-    logger.info(`[gemini] esperando tipificacion (gracia ${graciaMs}ms) sesion=${sesion.session_id} motivo=${motivo}`);
+    logger.debug(`[gemini] esperando tipificacion (gracia ${graciaMs}ms) sesion=${sesion.session_id} motivo=${motivo}`);
     const apiVoz = new ApiVozModel();
     const limite = Date.now() + graciaMs;
     const tick = async () => {
@@ -494,7 +494,7 @@ async function manejarConexion(asteriskWs, sesion) {
     }
     if (msg.toolCallCancellation?.ids?.length) {
       // Barge-in mientras habia tools en vuelo: Gemini las cancela solo.
-      logger.info(`[gemini] toolCallCancellation ids=${msg.toolCallCancellation.ids.join(",")}`);
+      logger.debug(`[gemini] toolCallCancellation ids=${msg.toolCallCancellation.ids.join(",")}`);
       return;
     }
 
@@ -503,7 +503,7 @@ async function manejarConexion(asteriskWs, sesion) {
       // Barge-in: vaciar la cola de bajada YA + avisar al integrador que
       // vacie su propia cola de reproduccion.
       if (sc.interrupted) {
-        logger.info(`[gemini] barge-in sesion=${sesion.session_id}; vaciando cola`);
+        logger.debug(`[gemini] barge-in sesion=${sesion.session_id}; vaciando cola`);
         outQ.clear();
         enviarAsterisk({ type: "playback_clear_buffer" });
         finalizarTurnoIA();

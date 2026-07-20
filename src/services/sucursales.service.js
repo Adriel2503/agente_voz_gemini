@@ -69,7 +69,7 @@ async function cargarTiendas(idEmpresa, variables = {}) {
     const p2 = parsearNombreTienda(t2.nombre);
     const p3 = parsearNombreTienda(t3.nombre);
 
-    logger.info(`[sucursales] OK ${tiendas.length} para '${termino}': #1=${t1.nombre || "-"}, #2=${t2.nombre || "-"}, #3=${t3.nombre || "-"}`);
+    logger.debug(`[sucursales] OK ${tiendas.length} para '${termino}': #1=${t1.nombre || "-"}, #2=${t2.nombre || "-"}, #3=${t3.nombre || "-"}`);
 
     return {
       tienda_cercana: t1.nombre || "",
