@@ -70,6 +70,31 @@ function fechasLima() {
   };
 }
 
+// Catalogo de tipificaciones recortado a lo que el MODELO necesita para elegir.
+// equivalencia y codigo_homologacion_api_agente NO los lee el prompt: los lee
+// geminiEngine desde sesion.tipificaciones para armar el webhook.
+//
+// El peso no eran los datos sino los NOMBRES DE LAS CLAVES repetidos una vez por
+// hoja: la suma de todos los `nombre` de Alfin son 855 chars, pero el JSON
+// entero pesaba 3731 ("codigo_homologacion_api_agente" solo son 30 x 27 = 810).
+//
+// id_padre SE CONSERVA aunque el prompt no lo mencione. El catalogo de Alfin
+// tiene 9 hojas con nombre repetido que solo se distinguen por su rama
+// ("SOLICITO NO SER CONTACTADO" es 598 y 599; "EXPRESO QUE NO AUTORIZO USO DE
+// DATOS" es 590, 600 y 603). Sin id_padre el modelo ve entradas identicas y
+// elige al azar justo en la familia de "no me contacten". Cuesta ~350 chars de
+// los ~2250 que ahorra el recorte; se puede quitar cuando el prompt hardcodee
+// los ids de sus salidas terminales, como ya hace el de Credicash.
+//
+// Devuelve objetos NUEVOS a proposito. Si en vez del map se recortara el
+// catalogo en sitio (un delete, un reasignar), sesion.tipificaciones perderia
+// codigo_homologacion_api_agente y el webhook saldria sin codigo para las
+// empresas que lo tienen poblado. Ver tipificacionesPrompt.test.js.
+function tipificacionesParaPrompt(lista) {
+  if (!Array.isArray(lista)) return [];
+  return lista.map(({ id, nombre, id_padre }) => ({ id, nombre, id_padre }));
+}
+
 // Placeholders que quedaron SIN resolver tras el render. renderPrompt deja el
 // {{...}} literal cuando no hay valor, y el modelo termina pronunciandolo al
 // cliente ("Que tenga buenas tardes, nombre corto"). Esto lo hace visible en el
@@ -105,4 +130,11 @@ async function renderPromptConFeriados(prompt, variables = {}) {
   return resultado.replace(/\{\{\s*feriados_proximos\s*\}\}/g, texto);
 }
 
-module.exports = { renderPrompt, renderPromptConFeriados, fechasLima, variablesSinResolver, saludoPorHora };
+module.exports = {
+  renderPrompt,
+  renderPromptConFeriados,
+  fechasLima,
+  variablesSinResolver,
+  saludoPorHora,
+  tipificacionesParaPrompt,
+};

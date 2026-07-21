@@ -3,7 +3,7 @@ const ApiVozModel = require("../models/apiVoz.model.js");
 const gemini = require("../services/gemini.service.js");
 const { enviarWebhook } = require("../services/webhook.service.js");
 const store = require("../sessions/store.js");
-const { renderPromptConFeriados, variablesSinResolver } = require("../lib/prompt.js");
+const { renderPromptConFeriados, variablesSinResolver, tipificacionesParaPrompt } = require("../lib/prompt.js");
 const { processTools } = require("../tools/processTools.js");
 const { cargarTiendas } = require("../services/sucursales.service.js");
 const genericaTools = require("../tools/generica.js");
@@ -61,7 +61,10 @@ async function crearSesion(req, res) {
     // Enriquecer variables con los reservados que la plantilla espera pre-cargados
     // (replica aiyou-voice-backend):
     //  - nombre_corto: primer nombre en minuscula, auto-derivado de nombre.
-    //  - tipificaciones: catalogo JSON que el agente lee para tipificarLlamada.
+    //  - tipificaciones: catalogo JSON que el agente lee para tipificarLlamada,
+    //    recortado a {id, nombre} (lo unico que el modelo necesita para elegir).
+    //    El catalogo COMPLETO viaja aparte en la sesion (linea de abajo) porque
+    //    geminiEngine saca de ahi codigo_homologacion_api_agente para el webhook.
     //  - provider_call_id: el call_id del integrador (las tools lo reciben aparte
     //    via processTools, pero la plantilla tambien lo referencia en texto).
     const varsPrompt = { ...variables };
@@ -69,7 +72,7 @@ async function crearSesion(req, res) {
     if (rawNombre && !varsPrompt.nombre_corto) {
       varsPrompt.nombre_corto = rawNombre.split(/\s+/)[0].toLowerCase();
     }
-    varsPrompt.tipificaciones = JSON.stringify(tipificaciones || []);
+    varsPrompt.tipificaciones = JSON.stringify(tipificacionesParaPrompt(tipificaciones));
     if (providerCallId) varsPrompt.provider_call_id = providerCallId;
 
     const promptPlantilla = plantilla.prompt || plantilla.prompt_resultado || "";
