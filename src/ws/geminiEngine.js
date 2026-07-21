@@ -26,6 +26,7 @@ const ApiVozModel = require("../models/apiVoz.model.js");
 const store = require("../sessions/store.js");
 const logger = require("../config/logger.js");
 const env = require("../config/env.js");
+const metricasCierre = require("../lib/metricasCierre.js");
 
 const TICK_MS = 20; // 50 fps, igual que el bridge Go
 
@@ -258,6 +259,11 @@ async function manejarConexion(asteriskWs, sesion) {
       `bytes_gemini=${bytesDown} frames_a_cliente=${framesWritten} silencio_bajada=${framesSilencioBajada} ` +
       `reconexiones=${reconexiones}`
     );
+    metricasCierre.registrar({
+      motivo,
+      code: cierreDetalle?.code ?? null,
+      reason: cierreDetalle?.reason || cierreDetalle?.error || null,
+    });
     store.actualizar(sesion.session_id, { estado: "finalizada", duracionSegundos });
 
     if (tickTimer) clearInterval(tickTimer);

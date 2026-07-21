@@ -11,6 +11,24 @@ const sesionesRoutes = require("./routes/sesiones.routes.js");
 const { manejarConexion } = require("./ws/geminiEngine.js");
 const store = require("./sessions/store.js");
 
+// Validaciones de config al arrancar: fallos de configuracion que de otro modo
+// solo se notan en produccion, bajo trafico real (o llamadas largas).
+if (!env.gemini.apiKey) {
+  logger.warn("[index] GEMINI_API_KEY no esta seteada: solo funcionaran empresas con gemini_api_key propia en BD");
+}
+// Gemini corta la conexion WS por goAway a los ~10 min (600s), avisando unos
+// 60s antes. Sin GEMINI_RESUMPTION, ese goAway cierra la llamada en vez de
+// reconectar: si MAX_CALL_SECONDS se acerca o supera esa ventana, las llamadas
+// mas largas se cortan a mitad de conversacion sin que nadie lo haya pedido.
+const GOAWAY_MARGEN_S = 60;
+if (!env.gemini.resumption && env.gemini.maxCallSeconds >= 600 - GOAWAY_MARGEN_S) {
+  logger.warn(
+    `[index] MAX_CALL_SECONDS=${env.gemini.maxCallSeconds}s se acerca o supera el limite de conexion ` +
+    `de Gemini (~10min) y GEMINI_RESUMPTION esta apagado: las llamadas que lleguen a esa duracion se ` +
+    `cortaran por goAway sin reconectar. Active GEMINI_RESUMPTION=1 o baje MAX_CALL_SECONDS.`
+  );
+}
+
 const app = express();
 app.use(express.json({ limit: "256kb" }));
 
