@@ -185,9 +185,10 @@ De 28,572 a ~27,400.
 2. **Apellido:** ¿lo agregan al payload, o se usa el nombre de pila?
 3. **Los 4 días:** ¿hábiles para desembolsar (correo) o vigencia de campaña
    (Speech)?
-4. ~~**SMS con la dirección**~~ — **RESUELTO (jul 2026):** lo envía el área de
-   soporte/call, no el bot. Lili solo lo anuncia. La frase del Speech vuelve al
-   prompt, en la confirmación final de 4.6.
+4. ~~**SMS con la dirección**~~ — **RESUELTO (jul 2026), luego revertido.**
+   Se implementó por un tiempo (lo envía soporte/call, Lili solo lo anuncia),
+   pero `Speech Alfin final.md` — el guion funcional vigente — no lo menciona
+   en ningún punto. Para ceñirse al documento funcional se sacó del prompt.
 
 
 ---
