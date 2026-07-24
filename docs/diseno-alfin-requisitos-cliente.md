@@ -189,6 +189,13 @@ De 28,572 a ~27,400.
    Se implementó por un tiempo (lo envía soporte/call, Lili solo lo anuncia),
    pero `Speech Alfin final.md` — el guion funcional vigente — no lo menciona
    en ningún punto. Para ceñirse al documento funcional se sacó del prompt.
+5. **Mapa de tipificaciones — PENDIENTE DE CLIENTE.** El prompt conserva por
+   ahora el funcionamiento actual: toda llamada sin cita exitosa usa
+   `tipificarLlamada`, mientras una cita exitosa queda registrada por
+   `agendar_cita`. No cambiar todavía las cinco categorías conceptuales del
+   prompt. Confirmar con Alfin qué nombre/id exacto del catálogo corresponde a
+   cada motivo de cierre antes de reemplazar el mapa; no inferirlo desde nombres
+   parecidos.
 
 
 ---
