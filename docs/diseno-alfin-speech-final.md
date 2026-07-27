@@ -139,3 +139,69 @@ tras esa confirmación, dado que es un revert de una corrección reciente.
 Los tres tocan decisiones ya validadas con el usuario. Se implementan en ese
 orden (D1→D8) pero D5, D7 y D8 requieren luz verde explícita — en particular
 D8, que es un revert directo de una corrección de esta semana.
+
+---
+
+## 5. D9 — Separar nombre de agencia (turno 1) de la dirección (turno 2)
+
+Pedido explícito del usuario tras D1-D8. Hoy 4.3 dice nombre de agencia Y
+dirección completa en el mismo turno, ANTES de preguntar si el cliente quiere
+más detalle:
+
+> *"En la agencia, San Miguel, ubicada en Avenida La Marina, dos mil
+> quinientos veintisiete, San Miguel, tenemos un crédito preaprobado...
+> ¿Le gustaría conocer más detalle de su crédito?"*
+
+**Problema que esto expone:** la pregunta *"¿le gustaría conocer más
+detalle?"* es incoherente — ya se dio el detalle (la dirección) antes de
+preguntar si lo quiere. D9 no es solo un recorte de turno, corrige esa
+contradicción: la dirección pasa a ser el "detalle" real, entregado solo si
+el cliente dice que sí.
+
+### Diseño
+
+**Turno 1 (4.3, presentación) — sin dirección:**
+> *"Perfecto {{nombre_corto}}. En la agencia, <tienda hablada>, tenemos un
+> crédito preaprobado para usted de hasta <OFERTA_MAX en palabras> soles, el
+> cual puede desembolsar en cómodas cuotas. Para acceder solo necesita
+> acercarse con su DNI vigente y un recibo de servicios. ¿Le gustaría conocer
+> más detalle de su crédito?"*
+
+Clasificación sin cambios: interés → turno 2 · otra agencia → 4.4 · duda → 4.7
+· objeción → 4.8 · rechazo definitivo → despedida.
+
+**Turno 2 (solo con el sí) — se funde con la continuación que ya existe,
+sin agregar un turno nuevo:**
+> *"Queda en <dirección hablada>. Su crédito preaprobado estará vigente solo
+> por cuatro días. ¿Prefiere acercarse hoy o mañana? ¿En qué horario le
+> resulta más conveniente?"*
+
+Respuesta a tu pregunta 1: la dirección se dice en la misma frase que la
+pregunta de día/horario que ya está ahí (línea 138) — no se crea un turno
+extra, solo se reordena qué se dice antes y después del sí.
+
+Respuesta a tu pregunta 2: **Fase 3 (confirmación final, línea 184) no
+cambia** — sigue repitiendo la dirección completa. Tiene sentido ahí: es la
+confirmación final de la cita, y para ese punto el cliente ya dijo que sí dos
+veces (al detalle y a la hora), repetir la dirección ayuda a que la recuerde.
+
+### Efecto colateral a decidir: pregunta directa por la dirección
+
+Hoy, si el cliente pregunta *"¿en qué dirección exacta?"* antes del turno 2,
+cae en "duda" → 4.7, que no tiene una línea para esa pregunta puntual (no
+hacía falta, la dirección ya se había dicho). Con D9 sí puede hacer falta.
+Dos opciones:
+
+- **(A, recomendado)** agregar una línea a 4.7: *"¿Dónde queda exactamente?"*
+  → dar la dirección y volver a la pregunta de más detalle.
+- **(B)** dejarlo sin cubrir — cae en el fallback genérico de guardrails
+  (*"eso se lo confirman al detalle en la agencia"*), que es incorrecto acá
+  porque la dirección sí la tenemos.
+
+Recomiendo (A): es una línea, cierra el hueco que D9 introduce.
+
+### Balance de tamaño
+
+Neutral a ligera baja: se mueve texto de un lugar a otro (la frase de
+dirección no se duplica, solo cambia de turno), más una línea nueva en 4.7 si
+se aplica (A). No se agrega ningún turno de conversación nuevo.
