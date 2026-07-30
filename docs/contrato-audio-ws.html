@@ -1,0 +1,227 @@
+<meta charset="utf-8">
+<title>Contrato del WebSocket de audio — Agente de Voz</title>
+<style>
+  :root{--bg:#fff;--fg:#1a1d21;--muted:#5b6470;--line:#e3e7ec;--code:#f5f7f9;--accent:#0b6bcb;--warn:#b45309;--bad:#b91c1c;--ok:#047857}
+  @media (prefers-color-scheme: dark){
+    :root{--bg:#15181c;--fg:#e6e9ee;--muted:#98a2b3;--line:#2a2f37;--code:#1d2128;--accent:#6ba8f5;--warn:#f0b357;--bad:#f57171;--ok:#4ade80}
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;padding:40px 24px 80px}
+  main{max-width:900px;margin:0 auto}
+  h1{font-size:29px;line-height:1.25;margin:0 0 6px}
+  h2{font-size:22px;margin:44px 0 14px;padding-top:18px;border-top:1px solid var(--line)}
+  h3{font-size:17px;margin:26px 0 8px}
+  p,li{color:var(--fg)}
+  .sub{color:var(--muted);margin:0 0 8px}
+  code{background:var(--code);padding:1px 5px;border-radius:4px;font:13.5px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+  pre{background:var(--code);padding:14px 16px;border-radius:8px;overflow-x:auto;border:1px solid var(--line)}
+  pre code{background:none;padding:0}
+  .tblwrap{overflow-x:auto;margin:14px 0}
+  table{border-collapse:collapse;width:100%;font-size:14.5px}
+  th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+  th{background:var(--code);font-weight:600}
+  .box{border-left:3px solid var(--accent);background:var(--code);padding:12px 16px;margin:16px 0;border-radius:0 6px 6px 0}
+  .box.warn{border-left-color:var(--warn)}
+  .box.bad{border-left-color:var(--bad)}
+  .box.ok{border-left-color:var(--ok)}
+  .box p:first-child{margin-top:0}.box p:last-child{margin-bottom:0}
+  .meta{color:var(--muted);font-size:14px}
+  .flow{font:13px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;overflow-x:auto;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px}
+</style>
+
+<main>
+
+<h1>Contrato del WebSocket de audio</h1>
+<p class="sub">Agente de Voz — <code>agente.ai-you.io</code>. Documento para el integrador telefónico
+(Asterisk de terceros). Cubre el <b>paso 2</b>: el audio. El paso 1 —crear la sesión— está en
+<a href="contrato-post-sesiones.html">contrato-post-sesiones.html</a>.</p>
+
+<h2>1 · Panorama</h2>
+
+<p>El gateway es un <b>puente bidireccional</b> entre su Asterisk y Gemini Live. Su lado nunca habla con
+Gemini: habla con nosotros, en <b>su</b> codec, y el gateway se encarga de toda la conversión.</p>
+
+<div class="flow">SUBIDA   Asterisk ──mulaw 8k──► [muLawToPcm16] ──► PCM16 8k ──[upsample ×2]──► PCM16 16k ──► Gemini
+BAJADA   Asterisk ◄──mulaw 8k── [pcm16ToMuLaw] ◄── PCM16 8k ◄─[24k→8k, 3→1]─── PCM16 24k ◄── Gemini</div>
+
+<p>Gemini <b>fija</b> sus sample rates: entrada 16 kHz, salida 24 kHz. Usted no los ve nunca, pero explican
+por qué el <code>codec</code> que declara en el POST no es cosmético: define toda la cadena de resampleo.</p>
+
+<h2>2 · Los dos codecs</h2>
+
+<p>Solo estos dos. Cualquier otro valor es <code>400 codec_invalido</code> — antes se aceptaba en silencio
+y se trataba como PCM16 16k, lo que producía una llamada que sonaba pero solo transmitía ruido.</p>
+
+<div class="tblwrap"><table>
+<tr><th><code>codec</code></th><th>Sample rate</th><th>Formato en el socket</th><th>Frame de 20 ms</th></tr>
+<tr><td><code>mulaw_8k</code></td><td>8000 Hz</td><td>G.711 µ-law, 1 byte por muestra</td><td><b>320 bytes</b></td></tr>
+<tr><td><code>pcm_s16le_16k</code> <span class="meta">(default)</span></td><td>16000 Hz</td><td>PCM 16 bit little-endian</td><td><b>640 bytes</b></td></tr>
+</table></div>
+
+<p>Siempre <b>mono</b>. El POST se lo confirma en <code>codec_acordado</code> y <code>sample_rate_hz</code>;
+si no coinciden con lo que va a enviar, no conecte.</p>
+
+<div class="box bad">
+<p><b>El error más común.</b> Si el sample rate del audio que envía no coincide con el
+<code>codec_acordado</code>, no hay error ni log: la llamada se establece y el agente simplemente
+<b>no entiende nada</b>, porque recibe ruido. Si conecta bien pero el agente no responde a la voz del
+cliente, esto es lo primero a revisar.</p>
+</div>
+
+<h2>3 · Conectar</h2>
+
+<pre><code>wss://agente.ai-you.io/v1/sesiones/{session_id}?token={token}</code></pre>
+
+<p>El <code>ws_url</code> ya viene armado en la respuesta del POST — úselo tal cual. Tiene una ventana de
+<b>30 segundos</b>: pasado ese plazo la sesión se purga y el upgrade da 404.</p>
+
+<div class="tblwrap"><table>
+<tr><th>Rechazo</th><th>Causa</th></tr>
+<tr><td><code>401</code></td><td>Token ausente, desconocido, o de otra empresa. Si el POST funcionó y esto falla, el token se mancó al armar la URL.</td></tr>
+<tr><td><code>404</code></td><td><code>session_id</code> desconocido o expirado (&gt;30 s).</td></tr>
+<tr><td><code>409</code></td><td>La sesión ya tiene un WebSocket conectado, o ya fue terminada. <b>No reintente</b>: cree una sesión nueva.</td></tr>
+</table></div>
+
+<h2>4 · El audio</h2>
+
+<p>Un solo socket lleva las dos cosas: <b>frames binarios</b> (audio) y <b>texto JSON</b> (control). Se
+distinguen por el tipo de frame WebSocket, no por el contenido.</p>
+
+<h3>Subida — usted hacia el gateway</h3>
+
+<p>Envíe frames binarios de <b>20 ms</b> en su codec (320 u 640 bytes). No hay handshake ni cabecera:
+el primer byte del primer frame ya es audio.</p>
+
+<div class="box warn">
+<p><b>Regla de oro: envíe SIEMPRE, a 50 frames por segundo.</b> También cuando el cliente está callado —
+mande silencio digital, no corte el flujo.</p>
+<p>El detector de turnos de Gemini (VAD) razona sobre un stream continuo. Si usted deja de enviar durante
+los silencios, el VAD no distingue «se calló» de «se cortó el audio», y el agente deja de detectar cuándo
+termina de hablar el cliente: se queda esperando, o interrumpe encima.</p>
+</div>
+
+<p>El gateway acumula lo que llega en una cola y lo entrega a Gemini a ritmo pautado de 20 ms. La cola
+admite <b>512 KB</b> (~16 s de audio); si se pasa se descarta entera, lo que significa que usted está
+enviando más rápido que tiempo real.</p>
+
+<h3>Bajada — el gateway hacia usted</h3>
+
+<p>Recibirá frames binarios del mismo tamaño y codec, a los mismos 50 fps. Reprodúzcalos según lleguen:
+ya vienen pautados, no hay que hacer buffering propio.</p>
+
+<p>Entre turnos, el gateway envía <b>silencio de relleno</b> para sostener el stream a 50 fps y que su lado
+no interprete la pausa como conexión muerta. Ese silencio no lleva marca: es audio como cualquier otro.</p>
+
+<div class="box">
+<p><b>En µ-law, el silencio no es <code>0x00</code>.</b> Es <code>0xFF</code>. Un buffer de ceros decodifica
+a fondo de escala, o sea un zumbido continuo. El gateway ya lo maneja; téngalo presente si genera silencio
+de su lado.</p>
+</div>
+
+<h2>5 · Mensajes de control (JSON)</h2>
+
+<h3>Que usted puede enviar</h3>
+
+<div class="tblwrap"><table>
+<tr><th>Mensaje</th><th>Efecto</th></tr>
+<tr><td><code>{"type":"session_end","motivo":"..."}</code></td><td>El cliente colgó. Cierra la llamada. <code>motivo</code> es opcional (default <code>hangup_caller</code>) y queda en la BD como motivo de fin.</td></tr>
+<tr><td><code>{"type":"ping"}</code></td><td>El gateway responde <code>{"type":"pong"}</code>. Opcional: hay heartbeat de protocolo (§6).</td></tr>
+<tr><td><code>{"type":"user_text","text":"..."}</code></td><td>Inyecta texto como si el cliente lo hubiera dicho. Para pruebas o canales sin voz.</td></tr>
+<tr><td><code>{"type":"dtmf",...}</code></td><td>Aceptado y <b>ignorado</b>: Gemini Live no tiene equivalente todavía.</td></tr>
+</table></div>
+
+<p>Un JSON que no parsea se descarta en silencio. Un <code>type</code> desconocido también.</p>
+
+<h3>Que usted va a recibir</h3>
+
+<div class="tblwrap"><table>
+<tr><th>Mensaje</th><th>Significado</th></tr>
+<tr><td><code>agent_started_speaking</code></td><td>Empezó a sonar audio real del agente.</td></tr>
+<tr><td><code>agent_stopped_speaking</code></td><td>Terminó su turno.</td></tr>
+<tr><td><code>playback_clear_buffer</code></td><td><b>Barge-in</b>: el cliente interrumpió. Descarte lo que tenga en su buffer de reproducción <i>inmediatamente</i>, o el agente va a seguir hablando encima del cliente.</td></tr>
+<tr><td><code>transcript_partial</code></td><td>Transcripción incremental. Trae <code>rol</code> (<code>usuario</code>/<code>agente</code>) y <code>texto</code>. Se pisa a sí misma.</td></tr>
+<tr><td><code>transcript_final</code></td><td>Turno cerrado. Mismo formato. Esto es lo que queda en la transcripción de la sesión.</td></tr>
+<tr><td><code>tool_call</code></td><td>El agente ejecutó una herramienta. Trae <code>name</code> y <code>args</code>. Informativo: la ejecución la hace el gateway.</td></tr>
+<tr><td><code>pong</code></td><td>Respuesta a su <code>ping</code>.</td></tr>
+</table></div>
+
+<div class="box ok">
+<p><b>De todos estos, el único que exige acción es <code>playback_clear_buffer</code>.</b> Los demás puede
+loguearlos o ignorarlos sin que la llamada se degrade.</p>
+</div>
+
+<h2>6 · Heartbeat</h2>
+
+<p>Cada <b>25 segundos</b> el gateway envía un <code>ping</code> de protocolo WebSocket. Si en el ciclo
+siguiente no hubo <b>ninguna</b> señal de vida, termina la conexión.</p>
+
+<p>Cuentan como señal de vida dos cosas, ambas <b>entrantes</b>:</p>
+<ul>
+  <li>el <code>pong</code> de protocolo (la mayoría de las librerías WS lo responden solas);</li>
+  <li><b>cualquier frame que usted envíe</b>, audio o control.</li>
+</ul>
+
+<p>O sea que si respeta la regla de oro de §4 —enviar siempre— el heartbeat nunca lo va a alcanzar, aunque
+su librería no conteste pongs.</p>
+
+<div class="box">
+<p>Lo que el gateway envía <b>no</b> cuenta como señal de vida. Es deliberado: si nuestras propias escrituras
+marcaran la conexión como viva, un socket muerto sin FIN —red partida, host congelado, NAT que dropea— no se
+detectaría nunca y retendría un canal hasta el tope duro de llamada.</p>
+</div>
+
+<h2>7 · Cierre</h2>
+
+<p>La llamada puede terminar por seis caminos:</p>
+
+<div class="tblwrap"><table>
+<tr><th>Origen</th><th>Cómo</th></tr>
+<tr><td>El cliente colgó</td><td>Usted manda <code>session_end</code>, o simplemente cierra el socket.</td></tr>
+<tr><td>El agente se despidió</td><td>Ejecuta su herramienta de colgado. El gateway <b>drena el audio pendiente</b> antes de cerrar, para que la despedida se escuche completa.</td></tr>
+<tr><td>El integrador cancela</td><td><code>POST /v1/agente-voz/sesiones/{id}/terminar</code>.</td></tr>
+<tr><td>Tope duro</td><td><code>MAX_CALL_SECONDS</code> (300 s por defecto).</td></tr>
+<tr><td>Heartbeat</td><td>Sin señal de vida (§6).</td></tr>
+<tr><td>Falla del motor</td><td>Gemini cortó o falló. Se cierra la sesión, no se reintenta sobre la misma.</td></tr>
+</table></div>
+
+<p>En todos los casos el gateway cierra <b>los dos extremos</b>, persiste el motivo de fin y dispara el
+webhook <code>session.ended</code>. La transcripción queda disponible en
+<code>GET /v1/agente-voz/sesiones/{id}/transcripcion</code> una vez terminada.</p>
+
+<h2>8 · Rechazos del POST que conviene manejar</h2>
+
+<p>Detalle completo en <a href="contrato-post-sesiones.html">el contrato del POST</a>. Los que cambian su
+lógica de reintento:</p>
+
+<div class="tblwrap"><table>
+<tr><th>HTTP</th><th><code>codigo</code></th><th>Qué hacer</th></tr>
+<tr><td>400</td><td><code>codec_invalido</code></td><td><b>No reintentar.</b> Está mandando un codec que no existe; corrija la integración.</td></tr>
+<tr><td>503</td><td><code>agente_indisponible</code></td><td>Sin canales libres para la empresa. <b>Reintente</b> respetando <code>Retry-After</code>.</td></tr>
+<tr><td>503</td><td><code>tasa_excedida</code></td><td>Demasiadas llamadas nuevas en poco tiempo. <b>Reintente</b> respetando <code>Retry-After</code>.</td></tr>
+</table></div>
+
+<div class="box warn">
+<p><b>Sobre <code>tasa_excedida</code>: espacie el marcado.</b> El límite no es solo por minuto — también
+acota cuántas llamadas puede abrir <i>de golpe</i>. Una campaña que dispara 15 llamadas en 8 segundos va a
+rebotar la mayoría, aunque el total del minuto esté dentro del límite. Marcando parejo no rebota nunca.</p>
+<p>Respete el <code>Retry-After</code>: reintentar antes solo consume cuota y empeora la congestión.</p>
+</div>
+
+<h2>9 · Checklist de integración</h2>
+
+<ol>
+  <li>POST con el <code>codec</code> correcto → guardar <code>ws_url</code>, <code>codec_acordado</code> y <code>sample_rate_hz</code>.</li>
+  <li>Conectar el WS <b>dentro de los 30 s</b>.</li>
+  <li>Enviar frames de 20 ms <b>a 50 fps, sin cortar en los silencios</b>.</li>
+  <li>Reproducir los frames binarios entrantes según llegan.</li>
+  <li>Manejar <code>playback_clear_buffer</code> vaciando el buffer de reproducción.</li>
+  <li>Al colgar el cliente: mandar <code>session_end</code>.</li>
+  <li>Ante 503: respetar <code>Retry-After</code>. Ante 400 y 409: no reintentar.</li>
+</ol>
+
+<p class="meta" style="margin-top:40px;border-top:1px solid var(--line);padding-top:14px">
+Implementación de referencia: <code>src/ws/geminiEngine.js</code> (puente y bombas),
+<code>src/lib/g711.js</code> (µ-law), <code>src/lib/resample.js</code> (conversión de rates),
+<code>src/index.js</code> (handshake y heartbeat). Documento verificado contra el código al 30-jul-2026.</p>
+
+</main>
