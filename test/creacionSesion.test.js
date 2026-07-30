@@ -130,6 +130,30 @@ test("camino feliz: la sesion queda registrada, ocupa canal y devuelve 201", asy
   store.eliminar(res.body.session_id);
 });
 
+// Un POST exitoso no dejaba ningun rastro: se logueaba el intento y los
+// rechazos, pero no el resultado. Esta linea es la unica donde el
+// external_call_id del integrador y nuestro session_id aparecen juntos, o sea el
+// unico punto por donde cruzar su reporte de campana con nuestros logs.
+test("el POST exitoso loguea CREADA con las claves de correlacion", async () => {
+  const res = resFake();
+  const salida = [];
+  const orig = console.log;
+  console.log = (m) => salida.push(m);
+  try {
+    await crearSesion(reqFake({ metadata: { external_call_id: "EXT-9911" } }), res);
+  } finally {
+    console.log = orig;
+  }
+
+  const creada = salida.find((l) => l.includes("CREADA"));
+  assert.ok(creada, "falta la linea CREADA");
+  assert.match(creada, new RegExp(`sesion=${res.body.session_id}`));
+  assert.match(creada, /empresa=8/);
+  assert.match(creada, /call=EXT-9911/, "el id del integrador es la mitad de la correlacion");
+
+  store.eliminar(res.body.session_id);
+});
+
 // --- whitelist de codec ---
 //
 // El ternario que habia antes (codec === "mulaw_8k" ? 8000 : 16000) aceptaba

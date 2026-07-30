@@ -49,16 +49,27 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
 server.on("upgrade", async (req, socket, head) => {
+  // Fuera del try para que el catch de abajo pueda decir de que sesion hablaba.
+  let sessionId = "?";
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const match = url.pathname.match(/^\/v1\/sesiones\/([^/]+)$/);
-    if (!match) return socket.destroy();
+    if (!match) {
+      logger.warn(`[upgrade] RECHAZADO ruta desconocida path=${url.pathname}`);
+      return socket.destroy();
+    }
 
-    const sessionId = match[1];
+    sessionId = match[1];
     const token = url.searchParams.get("token");
 
     const idEmpresa = await resolveEmpresaFromToken(token);
     if (idEmpresa === null) {
+      // El rechazo mas dificil de diagnosticar de todos: si el POST funciono
+      // pero el WS rebota 401, el token se manco en el camino. Ya paso una vez
+      // (el slice(7) que dejaba token= vacio, ver sesiones.controller.js) y se
+      // persiguio a ciegas porque no habia una sola linea. El token NO se
+      // loguea, ni un fragmento (leccion de 621f770).
+      logger.warn(`[upgrade] RECHAZADO 401 token ${token ? "desconocido" : "ausente"} sesion=${sessionId}`);
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       return socket.destroy();
     }
@@ -96,7 +107,7 @@ server.on("upgrade", async (req, socket, head) => {
       manejarConexion(ws, sesion);
     });
   } catch (error) {
-    logger.error(`[upgrade] ${error.message}`);
+    logger.error(`[upgrade] ${error.message} sesion=${sessionId}`);
     socket.destroy();
   }
 });

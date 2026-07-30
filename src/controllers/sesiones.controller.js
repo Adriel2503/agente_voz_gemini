@@ -289,6 +289,17 @@ async function crearSesion(req, res) {
       : (req.query.token || "").trim();
     const wsUrl = `wss://${host}/v1/sesiones/${registro.session_id}?token=${rawToken}`;
 
+    // La unica linea donde el external_call_id del integrador y nuestro
+    // session_id aparecen juntos: es el punto de union entre su reporte de
+    // campana y nuestros logs, por cualquiera de los dos extremos. Hasta ahora
+    // un POST exitoso no dejaba rastro (solo se logueaba el intento y los
+    // rechazos). Bonus: CREADA menos "[upgrade] WS conectado" da cuantas
+    // sesiones se crearon y nunca conectaron.
+    logger.info(
+      `[sesiones] CREADA sesion=${registro.session_id} empresa=${idEmpresa} call=${providerCallId || "-"} ` +
+      `plantilla=${plantilla.id} activas=${store.contarActivasPorEmpresa(idEmpresa)}`
+    );
+
     return res.status(201).json({
       session_id: registro.session_id,
       ws_url: wsUrl,

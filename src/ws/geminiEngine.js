@@ -24,7 +24,7 @@ const { traducirTools, ejecutarTool, debeColgar, TOOL_HANGUP, HANGUP_MAX_MS } = 
 const { enviarWebhook } = require("../services/webhook.service.js");
 const ApiVozModel = require("../models/apiVoz.model.js");
 const store = require("../sessions/store.js");
-const logger = require("../config/logger.js");
+const { conContexto } = require("../config/logger.js");
 const env = require("../config/env.js");
 const metricasCierre = require("../lib/metricasCierre.js");
 
@@ -80,6 +80,16 @@ function construirLiveConfig(geminiConfig, functionDeclarations = []) {
 async function manejarConexion(asteriskWs, sesion) {
   const iniciadoEn = Date.now();
   store.actualizar(sesion.session_id, { conectado: true, estado: "conectada" });
+
+  // Identidad de ESTA llamada, puesta una sola vez: todas las lineas de abajo la
+  // arrastran sin repetirla. `call` es el external_call_id del integrador, el
+  // unico identificador que compartimos con su sistema: sin el, un "la llamada
+  // XYZ fallo" de su lado no se puede cruzar con nada nuestro. Se omite si no lo
+  // mando.
+  const log = conContexto(
+    `sesion=${sesion.session_id} empresa=${sesion.idEmpresa}` +
+    (sesion.metadata?.external_call_id ? ` call=${sesion.metadata.external_call_id}` : "")
+  );
 
   const cfg = sesion.geminiConfig || {};
   // Tools: declaraciones para Gemini + mapa de ejecucion HTTP (Fase 2).
@@ -154,7 +164,7 @@ async function manejarConexion(asteriskWs, sesion) {
 
   const registrarTranscript = (rol, texto) => {
     if (!texto) return;
-    logger.debug(`[gemini] transcript final sesion=${sesion.session_id} rol=${rol} texto="${texto}"`);
+    log.debug(`[gemini] transcript final rol=${rol} texto="${texto}"`);
     sesion.transcripcion.push({ rol, ts: (Date.now() - iniciadoEn) / 1000, texto });
     enviarAsterisk({ type: "transcript_final", rol, texto });
   };
@@ -177,7 +187,7 @@ async function manejarConexion(asteriskWs, sesion) {
   const capturarTipificacion = (args) => {
     const idTip = Number(args?.id_tipificacion_llamada);
     if (!Number.isInteger(idTip) || idTip <= 0) {
-      logger.warn(`[gemini] tipificarLlamada sin id valido sesion=${sesion.session_id} args=${JSON.stringify(args)}`);
+      log.warn(`[gemini] tipificarLlamada sin id valido args=${JSON.stringify(args)}`);
       return;
     }
     const cat = (sesion.tipificaciones || []).find((t) => Number(t.id) === idTip) || null;
@@ -187,7 +197,7 @@ async function manejarConexion(asteriskWs, sesion) {
       equivalencia: cat?.equivalencia ?? null,
       codigo_homologacion: cat?.codigo_homologacion_api_agente ?? null,
     };
-    logger.info(`[gemini] tipificacion capturada sesion=${sesion.session_id} id=${idTip} nombre="${cat?.nombre || ""}"`);
+    log.info(`[gemini] tipificacion capturada id=${idTip} nombre="${cat?.nombre || ""}"`);
   };
 
   // Captura la cita agendada (tool agendar_cita). La persistencia en BD la
@@ -199,11 +209,11 @@ async function manejarConexion(asteriskWs, sesion) {
     const hora = (args?.hora ?? "").toString().trim() || null;
     const agencia = (args?.agencia ?? "").toString().trim() || null;
     if (!tienda || !fecha || !hora) {
-      logger.warn(`[gemini] agendar_cita incompleto sesion=${sesion.session_id} args=${JSON.stringify(args)}`);
+      log.warn(`[gemini] agendar_cita incompleto args=${JSON.stringify(args)}`);
       return;
     }
     sesion.agendamientoFinal = { tienda, agencia, fecha, hora };
-    logger.info(`[gemini] agendamiento capturado sesion=${sesion.session_id} tienda="${tienda}" ${fecha} ${hora}`);
+    log.info(`[gemini] agendamiento capturado tienda="${tienda}" ${fecha} ${hora}`);
   };
 
   // Ejecuta los toolCalls del modelo: el gateway hace el HTTP (a diferencia de
@@ -214,7 +224,7 @@ async function manejarConexion(asteriskWs, sesion) {
     for (const c of calls) {
       const nombre = c.name;
       const args = c.args || {};
-      logger.debug(`[gemini] tool del agente sesion=${sesion.session_id} name=${nombre} args=${JSON.stringify(args)}`);
+      log.debug(`[gemini] tool del agente name=${nombre} args=${JSON.stringify(args)}`);
       enviarAsterisk({ type: "tool_call", name: nombre, args });
       if (sesion.webhook) {
         enviarWebhook(sesion.webhook, "session.tool_call", {
@@ -234,7 +244,7 @@ async function manejarConexion(asteriskWs, sesion) {
       if (nombre === "hangUp") {
         colgarPendiente = true;
         colgarLimite = Date.now() + HANGUP_MAX_MS;
-        logger.info(`[gemini] hangUp del agente sesion=${sesion.session_id}: drenando audio antes de cerrar`);
+        log.info(`[gemini] hangUp del agente: drenando audio antes de cerrar`);
         continue;
       }
 
@@ -242,7 +252,7 @@ async function manejarConexion(asteriskWs, sesion) {
       const response = ejecutable
         ? await ejecutarTool(ejecutable, nombre, args)
         : { ok: false, error: `tool desconocida: ${nombre}` };
-      if (!ejecutable) logger.warn(`[gemini] toolCall a tool no declarada: ${nombre}`);
+      if (!ejecutable) log.warn(`[gemini] toolCall a tool no declarada: ${nombre}`);
       functionResponses.push({ id: c.id, name: nombre, response });
     }
     // Vacio = el batch era solo hangUp: no hay nada que responder.
@@ -250,7 +260,7 @@ async function manejarConexion(asteriskWs, sesion) {
     try {
       session.sendToolResponse({ functionResponses });
     } catch (e) {
-      logger.warn(`[gemini] sendToolResponse: ${e.message}`);
+      log.warn(`[gemini] sendToolResponse: ${e.message}`);
     }
   };
 
@@ -258,8 +268,8 @@ async function manejarConexion(asteriskWs, sesion) {
     if (cerrado) return;
     cerrado = true;
     const duracionSegundos = Math.max(0, Math.round((Date.now() - iniciadoEn) / 1000));
-    logger.info(
-      `[gemini] cerrando sesion=${sesion.session_id} motivo=${motivo} duracion=${duracionSegundos}s ` +
+    log.info(
+      `[gemini] cerrando motivo=${motivo} duracion=${duracionSegundos}s ` +
       `RESUMEN frames_subida=${framesUp} silencio_relleno=${silenceUp} audio_msgs_gemini=${audioMsgsDown} ` +
       `bytes_gemini=${bytesDown} frames_a_cliente=${framesWritten} silencio_bajada=${framesSilencioBajada} ` +
       `reconexiones=${reconexiones}`
@@ -298,10 +308,10 @@ async function manejarConexion(asteriskWs, sesion) {
               equivalencia: cat?.equivalencia ?? null,
               codigo_homologacion: cat?.codigo_homologacion_api_agente ?? null,
             };
-            logger.info(`[gemini] tipificacion recuperada de BD sesion=${sesion.session_id} id=${idTip}`);
+            log.info(`[gemini] tipificacion recuperada de BD id=${idTip}`);
           }
         } catch (e) {
-          logger.warn(`[gemini] leer tipificacion BD: ${e.message}`);
+          log.warn(`[gemini] leer tipificacion BD: ${e.message}`);
         }
       }
       if (!sesion.agendamientoFinal) {
@@ -314,10 +324,10 @@ async function manejarConexion(asteriskWs, sesion) {
               fecha: cita.fecha ?? null,
               hora: cita.hora ?? null,
             };
-            logger.info(`[gemini] agendamiento recuperado de BD sesion=${sesion.session_id}`);
+            log.info(`[gemini] agendamiento recuperado de BD`);
           }
         } catch (e) {
-          logger.warn(`[gemini] leer agendamiento BD: ${e.message}`);
+          log.warn(`[gemini] leer agendamiento BD: ${e.message}`);
         }
       }
 
@@ -342,7 +352,7 @@ async function manejarConexion(asteriskWs, sesion) {
           fecha_fin: new Date().toISOString(),
         });
       } catch (e) {
-        logger.error(`[gemini] upsert ended: ${e.message}`);
+        log.error(`[gemini] upsert ended: ${e.message}`);
       }
       if (sesion.webhook) {
         enviarWebhook(sesion.webhook, "session.ended", {
@@ -362,7 +372,7 @@ async function manejarConexion(asteriskWs, sesion) {
       // bloque (enviarWebhook, store.eliminar) quedaba descubierto: un rechazo
       // aca era unhandledRejection. La sesion ya esta cerrada en este punto, asi
       // que lo unico que corresponde es dejar rastro.
-      logger.error(`[gemini] cierre de sesion=${sesion.session_id} fallo: ${e.stack || e.message}`);
+      log.error(`[gemini] el cierre fallo: ${e.stack || e.message}`);
     });
   };
 
@@ -372,12 +382,12 @@ async function manejarConexion(asteriskWs, sesion) {
   // desde un catch, su excepcion escaparia al runtime y tumbaria TODAS las
   // llamadas del proceso — exactamente lo que estos catch existen para evitar.
   const cerrarSeguro = (motivo, e) => {
-    logger.error(`[gemini] ${motivo} sesion=${sesion.session_id}: ${e?.stack || e?.message || e}`);
+    log.error(`[gemini] ${motivo}: ${e?.stack || e?.message || e}`);
     try {
       cierreDetalle = { error: `${motivo}: ${e?.message || e}` };
       cerrar(motivo);
     } catch (e2) {
-      logger.error(`[gemini] fallo tambien el cierre sesion=${sesion.session_id}: ${e2?.stack || e2?.message || e2}`);
+      log.error(`[gemini] fallo tambien el cierre: ${e2?.stack || e2?.message || e2}`);
     }
   };
 
@@ -392,7 +402,7 @@ async function manejarConexion(asteriskWs, sesion) {
         text: "El usuario ha colgado la llamada. Tipifica la llamada con la informacion recopilada.",
       });
     } catch (e) {
-      logger.warn(`[gemini] avisarHangup: ${e.message}`);
+      log.warn(`[gemini] avisarHangup: ${e.message}`);
     }
   };
 
@@ -409,7 +419,7 @@ async function manejarConexion(asteriskWs, sesion) {
       return;
     }
     avisarHangup();
-    logger.debug(`[gemini] esperando tipificacion (gracia ${graciaMs}ms) sesion=${sesion.session_id} motivo=${motivo}`);
+    log.debug(`[gemini] esperando tipificacion (gracia ${graciaMs}ms) motivo=${motivo}`);
     const apiVoz = new ApiVozModel();
     const limite = Date.now() + graciaMs;
     const tick = async () => {
@@ -460,7 +470,7 @@ async function manejarConexion(asteriskWs, sesion) {
             audio: { data: audio16k.toString("base64"), mimeType: "audio/pcm;rate=16000" },
           });
         } catch (e) {
-          logger.warn(`[gemini] sendRealtimeInput: ${e.message}`);
+          log.warn(`[gemini] sendRealtimeInput: ${e.message}`);
           cerrar("gemini_send_error");
           return;
         }
@@ -519,9 +529,9 @@ async function manejarConexion(asteriskWs, sesion) {
       if (reconectando) {
         // La conexion nueva de una reconexion quedo lista: reanudar la subida.
         reconectando = false;
-        logger.info(`[gemini] reconexion lista sesion=${sesion.session_id} gen=${genConn}`);
+        log.info(`[gemini] reconexion lista gen=${genConn}`);
       } else {
-        logger.info(`[gemini] sesion lista sesion=${sesion.session_id} model=${cfg.model} tools=${functionDeclarations.length}`);
+        log.info(`[gemini] sesion lista model=${cfg.model} tools=${functionDeclarations.length}`);
       }
       arrancarBombas();
       return;
@@ -538,7 +548,7 @@ async function manejarConexion(asteriskWs, sesion) {
     }
     if (msg.toolCallCancellation?.ids?.length) {
       // Barge-in mientras habia tools en vuelo: Gemini las cancela solo.
-      logger.debug(`[gemini] toolCallCancellation ids=${msg.toolCallCancellation.ids.join(",")}`);
+      log.debug(`[gemini] toolCallCancellation ids=${msg.toolCallCancellation.ids.join(",")}`);
       return;
     }
 
@@ -547,7 +557,7 @@ async function manejarConexion(asteriskWs, sesion) {
       // Barge-in: vaciar la cola de bajada YA + avisar al integrador que
       // vacie su propia cola de reproduccion.
       if (sc.interrupted) {
-        logger.debug(`[gemini] barge-in sesion=${sesion.session_id}; vaciando cola`);
+        log.debug(`[gemini] barge-in; vaciando cola`);
         outQ.clear();
         enviarAsterisk({ type: "playback_clear_buffer" });
         finalizarTurnoIA();
@@ -582,7 +592,7 @@ async function manejarConexion(asteriskWs, sesion) {
         ultimoAudioEn = Date.now(); // el drenaje de hangUp espera a que esto se aquiete
         outQ.push(downsampler.process(pcm24k));
         if (outQ.length > OUT_Q_MAX_BYTES) {
-          logger.warn(`[gemini] outQ supero el tope (${outQ.length}B); vaciando sesion=${sesion.session_id}`);
+          log.warn(`[gemini] outQ supero el tope (${outQ.length}B); vaciando`);
           outQ.clear();
         }
         if (!agenteHablando) {
@@ -601,7 +611,7 @@ async function manejarConexion(asteriskWs, sesion) {
     }
 
     if (msg.goAway) {
-      logger.warn(`[gemini] go_away sesion=${sesion.session_id} timeLeft=${msg.goAway.timeLeft || "?"}`);
+      log.warn(`[gemini] go_away timeLeft=${msg.goAway.timeLeft || "?"}`);
       // Con GEMINI_RESUMPTION=1: reconectar de forma transparente preservando el
       // contexto, sin cortar la llamada. Sin el flag: cerrar como siempre.
       if (env.gemini.resumption && !cerrado) {
@@ -642,7 +652,7 @@ async function manejarConexion(asteriskWs, sesion) {
       // Audio del caller al rate acordado; se encola y la bomba lo sube pautado.
       inQ.push(esMulaw ? muLawToPcm16(data) : data);
       if (inQ.length > IN_Q_MAX_BYTES) {
-        logger.warn(`[gemini] inQ supero el tope; vaciando sesion=${sesion.session_id}`);
+        log.warn(`[gemini] inQ supero el tope; vaciando`);
         inQ.clear();
       }
       return;
@@ -651,7 +661,7 @@ async function manejarConexion(asteriskWs, sesion) {
     try { ctrl = JSON.parse(data.toString()); } catch { return; }
     switch (ctrl.type) {
       case "session_end":
-        logger.info(`[gemini] session_end del cliente sesion=${sesion.session_id} payload=${JSON.stringify(ctrl)}`);
+        log.info(`[gemini] session_end del cliente payload=${JSON.stringify(ctrl)}`);
         finalizarConGracia(ctrl.motivo || "hangup_caller");
         break;
       case "ping":
@@ -660,7 +670,7 @@ async function manejarConexion(asteriskWs, sesion) {
       case "user_text":
         if (session && ctrl.text) {
           try { session.sendRealtimeInput({ text: String(ctrl.text) }); } catch (e) {
-            logger.warn(`[gemini] user_text: ${e.message}`);
+            log.warn(`[gemini] user_text: ${e.message}`);
           }
         }
         break;
@@ -681,7 +691,7 @@ async function manejarConexion(asteriskWs, sesion) {
   });
 
   asteriskWs.on("close", () => finalizarConGracia("asterisk_close"));
-  asteriskWs.on("error", (e) => { logger.warn(`[gemini] asterisk error: ${e.message}`); cerrar("asterisk_error"); });
+  asteriskWs.on("error", (e) => { log.warn(`[gemini] asterisk error: ${e.message}`); cerrar("asterisk_error"); });
 
   // Abre una conexion Live a Gemini y cablea sus callbacks con un GUARD DE
   // GENERACION: cada conexion reclama un id (genConn) al abrirse; los callbacks
@@ -727,7 +737,7 @@ async function manejarConexion(asteriskWs, sesion) {
           if (miGen !== genConn) return;
           try {
             cierreDetalle = { error: e?.message || String(e) };
-            logger.warn(`[gemini] error WS: ${e?.message || e}`);
+            log.warn(`[gemini] error WS: ${e?.message || e}`);
           } catch (_) { /* no dejar que el logueo del error tape el cierre */ }
           cerrar("gemini_error");
         },
@@ -737,7 +747,7 @@ async function manejarConexion(asteriskWs, sesion) {
             // El code/reason del WS suele traer el motivo real (RESOURCE_EXHAUSTED,
             // quota, etc.). Se guarda para metadata ademas de loguearlo.
             cierreDetalle = { code: e?.code ?? null, reason: e?.reason || null };
-            if (!cerrado) logger.info(`[gemini] WS cerrado code=${e?.code ?? "?"} (${e?.reason || "sin motivo"})`);
+            if (!cerrado) log.info(`[gemini] WS cerrado code=${e?.code ?? "?"} (${e?.reason || "sin motivo"})`);
           } catch (_) { /* idem: el cierre tiene que correr igual */ }
           cerrar("gemini_close");
         },
@@ -763,17 +773,17 @@ async function manejarConexion(asteriskWs, sesion) {
       inQ.clear(); // descarta el backlog del swap (una rafaga rompe el VAD)
       reconexiones++;
       try { if (vieja) vieja.close(); } catch (_) {}
-      logger.info(`[gemini] reconectado sesion=${sesion.session_id} handle=${handle ? "si" : "no"} gen=${genConn}`);
+      log.info(`[gemini] reconectado handle=${handle ? "si" : "no"} gen=${genConn}`);
     } catch (e) {
       reconectando = false;
-      logger.error(`[gemini] reconexion fallo sesion=${sesion.session_id}: ${e.message}`);
+      log.error(`[gemini] reconexion fallo: ${e.message}`);
       cerrar("gemini_reconnect_error");
       return;
     }
     // Si la conexion nueva nunca da setupComplete, no dejar la llamada muda.
     setTimeout(() => {
       if (!cerrado && reconectando) {
-        logger.error(`[gemini] reconexion sin setupComplete sesion=${sesion.session_id}`);
+        log.error(`[gemini] reconexion sin setupComplete`);
         cerrar("gemini_reconnect_timeout");
       }
     }, 8000);
@@ -783,7 +793,7 @@ async function manejarConexion(asteriskWs, sesion) {
   try {
     session = await conectarGemini(null, false);
   } catch (e) {
-    logger.error(`[gemini] connect fallo sesion=${sesion.session_id}: ${e.message}`);
+    log.error(`[gemini] connect fallo: ${e.message}`);
     cerrar("gemini_connect_error");
     return;
   }
@@ -793,14 +803,14 @@ async function manejarConexion(asteriskWs, sesion) {
   sesion.engineEnviarTexto = (text) => {
     if (cerrado || !session) return;
     try { session.sendRealtimeInput({ text: String(text) }); } catch (e) {
-      logger.warn(`[gemini] engineEnviarTexto: ${e.message}`);
+      log.warn(`[gemini] engineEnviarTexto: ${e.message}`);
     }
   };
 
   // Saludo inicial: trigger como TEXTO (esquiva el VAD, que solo oye audio).
   if (env.gemini.greetFirst) {
     try { session.sendRealtimeInput({ text: env.gemini.greetingTrigger }); } catch (e) {
-      logger.warn(`[gemini] greet: ${e.message}`);
+      log.warn(`[gemini] greet: ${e.message}`);
     }
   }
 
@@ -808,7 +818,7 @@ async function manejarConexion(asteriskWs, sesion) {
   // version del SDK: arrancar igual a los 3 s de conectar.
   setTimeout(() => {
     if (!listo && !cerrado) {
-      logger.warn(`[gemini] setupComplete no visto; arrancando bombas por fallback sesion=${sesion.session_id}`);
+      log.warn(`[gemini] setupComplete no visto; arrancando bombas por fallback`);
       arrancarBombas();
     }
   }, 3000);

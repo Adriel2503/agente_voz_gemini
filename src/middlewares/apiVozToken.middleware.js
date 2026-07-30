@@ -10,12 +10,21 @@ const apiVozTokenAuth = async (req, res, next) => {
       ? header.slice(7).trim()
       : (req.query.token || "").trim();
 
+    // Los dos 401 dejan rastro: un token rotado o mal copiado devolvia 401 en
+    // silencio absoluto y no habia con que empezar a mirar.
+    //
+    // Se usa req.path y NUNCA req.originalUrl: cuando se autentica por query
+    // string, originalUrl CONTIENE el token, y filtrar la credencial en la linea
+    // que agrego justamente para diagnosticar credenciales seria absurdo. El
+    // token no se loguea, ni un fragmento (leccion de 621f770).
     if (!rawToken) {
+      logger.warn(`[auth] RECHAZADO 401 sin token ${req.method} ${req.path}`);
       return res.status(401).json({ codigo: "auth_invalida", msg: "Token no proporcionado" });
     }
 
     const idEmpresa = await new ApiVozModel().getEmpresaByToken(rawToken);
     if (idEmpresa === null) {
+      logger.warn(`[auth] RECHAZADO 401 token desconocido ${req.method} ${req.path}`);
       return res.status(401).json({ codigo: "auth_invalida", msg: "Token invalido" });
     }
 
