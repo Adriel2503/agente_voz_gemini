@@ -6,10 +6,15 @@ const { WebSocketServer } = require("ws");
 const env = require("./config/env.js");
 const logger = require("./config/logger.js");
 const { testConnection } = require("./config/db.js");
+const { instalarRedDeSeguridad } = require("./config/procesoSeguro.js");
 const { resolveEmpresaFromToken } = require("./middlewares/apiVozToken.middleware.js");
 const sesionesRoutes = require("./routes/sesiones.routes.js");
 const { manejarConexion } = require("./ws/geminiEngine.js");
 const store = require("./sessions/store.js");
+
+// Lo primero de todo: sin esto un error no capturado se lleva puestas TODAS las
+// llamadas activas y no deja ni el stack.
+instalarRedDeSeguridad();
 
 // Validaciones de config al arrancar: fallos de configuracion que de otro modo
 // solo se notan en produccion, bajo trafico real (o llamadas largas).

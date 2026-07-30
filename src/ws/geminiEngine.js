@@ -352,7 +352,28 @@ async function manejarConexion(asteriskWs, sesion) {
         });
       }
       store.eliminar(sesion.session_id);
-    })();
+    })().catch((e) => {
+      // Las lecturas de BD ya tienen su try/catch adentro, pero el resto del
+      // bloque (enviarWebhook, store.eliminar) quedaba descubierto: un rechazo
+      // aca era unhandledRejection. La sesion ya esta cerrada en este punto, asi
+      // que lo unico que corresponde es dejar rastro.
+      logger.error(`[gemini] cierre de sesion=${sesion.session_id} fallo: ${e.stack || e.message}`);
+    });
+  };
+
+  // Cierre para los caminos de ERROR. cerrar() no es infalible: hace
+  // enviarAsterisk (JSON.stringify + send) sobre un socket que, justo cuando algo
+  // fallo, tiene buenas chances de estar roto tambien. Si se lo llamara pelado
+  // desde un catch, su excepcion escaparia al runtime y tumbaria TODAS las
+  // llamadas del proceso — exactamente lo que estos catch existen para evitar.
+  const cerrarSeguro = (motivo, e) => {
+    logger.error(`[gemini] ${motivo} sesion=${sesion.session_id}: ${e?.stack || e?.message || e}`);
+    try {
+      cierreDetalle = { error: `${motivo}: ${e?.message || e}` };
+      cerrar(motivo);
+    } catch (e2) {
+      logger.error(`[gemini] fallo tambien el cierre sesion=${sesion.session_id}: ${e2?.stack || e2?.message || e2}`);
+    }
   };
 
   // Al colgar el caller, avisa al agente para que tipifique antes del cierre.
@@ -476,7 +497,12 @@ async function manejarConexion(asteriskWs, sesion) {
   };
 
   // ---- Eventos de Gemini (port de events.py + pump_down del server Python) ----
-  const onMensajeGemini = (msg) => {
+  //
+  // AISLAMIENTO: el cuerpo va envuelto (ver onMensajeGemini abajo). Este proceso
+  // sostiene TODAS las llamadas activas, asi que una excepcion aca —un
+  // Buffer.from sobre un inlineData raro, un send sobre un socket en mal
+  // estado— se llevaria puestas las 15 llamadas en curso, no solo esta.
+  const procesarMensajeGemini = (msg) => {
     if (cerrado) return;
 
     if (msg.setupComplete) {
@@ -495,7 +521,10 @@ async function manejarConexion(asteriskWs, sesion) {
     // El modelo invoco tools: el gateway las ejecuta y le responde (async,
     // sin bloquear el resto de eventos).
     if (msg.toolCall?.functionCalls?.length) {
-      manejarToolCalls(msg.toolCall.functionCalls);
+      // Promesa flotante a proposito (no bloquea el resto de eventos), pero el
+      // catch NO es opcional: sin el, un rechazo aca era unhandledRejection.
+      manejarToolCalls(msg.toolCall.functionCalls)
+        .catch((e) => cerrarSeguro("gemini_tool_error", e));
       return;
     }
     if (msg.toolCallCancellation?.ids?.length) {
@@ -567,7 +596,9 @@ async function manejarConexion(asteriskWs, sesion) {
       // Con GEMINI_RESUMPTION=1: reconectar de forma transparente preservando el
       // contexto, sin cortar la llamada. Sin el flag: cerrar como siempre.
       if (env.gemini.resumption && !cerrado) {
-        reconectar();
+        // reconectar() tiene try/catch sobre conectarGemini, pero no sobre el
+        // resto del cuerpo; sin este catch un rechazo era unhandledRejection.
+        reconectar().catch((e) => cerrarSeguro("gemini_reconnect_error", e));
       } else {
         cerrar("gemini_go_away");
       }
@@ -579,8 +610,24 @@ async function manejarConexion(asteriskWs, sesion) {
     }
   };
 
+  // Si no podemos procesar lo que manda Gemini, la llamada ya esta rota para el
+  // cliente (silencio del otro lado): se cierra ESTA sesion y listo. Dejarla viva
+  // seria un zombi quemando canal y TPM para no decir nada. cerrar() persiste el
+  // motivo, dispara session.ended y libera el cupo; ademas metricasCierre agrega
+  // por motivo, asi que estos errores aparecen solos en el resumen de 5 min.
+  const onMensajeGemini = (msg) => {
+    try {
+      procesarMensajeGemini(msg);
+    } catch (e) {
+      cerrarSeguro("gemini_message_error", e);
+    }
+  };
+
   // ---- Mensajes del cliente (mismo switch que el camino Ultravox) ----
-  asteriskWs.on("message", (data, isBinary) => {
+  // Mismo aislamiento que el lado Gemini, y aca es todavia mas directo: esto es
+  // un handler de EventEmitter, asi que un throw es uncaughtException puro. Los
+  // bytes vienen del integrador sin validar (muLawToPcm16 sobre datos raros).
+  const procesarMensajeAsterisk = (data, isBinary) => {
     if (cerrado) return;
     if (isBinary) {
       // Audio del caller al rate acordado; se encola y la bomba lo sube pautado.
@@ -614,6 +661,14 @@ async function manejarConexion(asteriskWs, sesion) {
       default:
         break;
     }
+  };
+
+  asteriskWs.on("message", (data, isBinary) => {
+    try {
+      procesarMensajeAsterisk(data, isBinary);
+    } catch (e) {
+      cerrarSeguro("asterisk_message_error", e);
+    }
   });
 
   asteriskWs.on("close", () => finalizarConGracia("asterisk_close"));
@@ -640,30 +695,41 @@ async function manejarConexion(asteriskWs, sesion) {
     return ai.live.connect({
       model: cfg.model,
       config: cfgLive,
+      // Los 3 callbacks van blindados por lo mismo que onMensajeGemini: los
+      // invoca el SDK, y un throw desde aca escala al runtime y tumba todas las
+      // llamadas del proceso, no solo esta.
       callbacks: {
         onopen: () => {
           if (miGen !== genConn) return; // conexion vieja: ignorar
-          store.actualizar(sesion.session_id, { estado: "en_curso" });
-          if (!esReconexion && sesion.webhook) {
-            enviarWebhook(sesion.webhook, "session.connected", {
-              session_id: sesion.session_id,
-              variables: sesion.variables || {},
-            });
+          try {
+            store.actualizar(sesion.session_id, { estado: "en_curso" });
+            if (!esReconexion && sesion.webhook) {
+              enviarWebhook(sesion.webhook, "session.connected", {
+                session_id: sesion.session_id,
+                variables: sesion.variables || {},
+              });
+            }
+          } catch (e) {
+            cerrarSeguro("gemini_open_error", e);
           }
         },
         onmessage: (m) => { if (miGen === genConn) onMensajeGemini(m); },
         onerror: (e) => {
           if (miGen !== genConn) return;
-          cierreDetalle = { error: e?.message || String(e) };
-          logger.warn(`[gemini] error WS: ${e?.message || e}`);
+          try {
+            cierreDetalle = { error: e?.message || String(e) };
+            logger.warn(`[gemini] error WS: ${e?.message || e}`);
+          } catch (_) { /* no dejar que el logueo del error tape el cierre */ }
           cerrar("gemini_error");
         },
         onclose: (e) => {
           if (miGen !== genConn) return;
-          // El code/reason del WS suele traer el motivo real (RESOURCE_EXHAUSTED,
-          // quota, etc.). Se guarda para metadata ademas de loguearlo.
-          cierreDetalle = { code: e?.code ?? null, reason: e?.reason || null };
-          if (!cerrado) logger.info(`[gemini] WS cerrado code=${e?.code ?? "?"} (${e?.reason || "sin motivo"})`);
+          try {
+            // El code/reason del WS suele traer el motivo real (RESOURCE_EXHAUSTED,
+            // quota, etc.). Se guarda para metadata ademas de loguearlo.
+            cierreDetalle = { code: e?.code ?? null, reason: e?.reason || null };
+            if (!cerrado) logger.info(`[gemini] WS cerrado code=${e?.code ?? "?"} (${e?.reason || "sin motivo"})`);
+          } catch (_) { /* idem: el cierre tiene que correr igual */ }
           cerrar("gemini_close");
         },
       },
