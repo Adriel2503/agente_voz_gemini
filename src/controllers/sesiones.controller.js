@@ -18,10 +18,32 @@ const err = (res, http, codigo, msg) => {
   return res.status(http).json({ codigo, msg });
 };
 
+// Codecs que el motor implementa DE VERDAD -> sample rate. No es config: son las
+// dos ramas que existen en geminiEngine (esMulaw, frameBytes, Downsampler24a8 /
+// 24a16). Antes esto era `codec === "mulaw_8k" ? 8000 : 16000`, y ese else no
+// era un default sino un catch-all mudo: cualquier string (un typo como
+// "mulaw_8000", o el nombre que use el otro lado: PCMU, g711u) se aceptaba, se
+// devolvia en codec_acordado como si estuviera pactado, y se trataba como PCM16
+// 16k. La llamada se hacia igual: el cliente mandaba mulaw, nosotros lo leiamos
+// como PCM y Gemini escuchaba ruido blanco. Se quemaba canal, tokens y un
+// contacto real de la campana, y en ningun log aparecia la palabra codec.
+//
+// Map y no objeto literal a proposito: con un objeto, CODECS["toString"] es una
+// funcion (truthy) y pasaria la validacion. Map.get devuelve undefined para todo
+// lo que no se puso, incluidos numeros y objetos.
+const CODECS = new Map([
+  ["pcm_s16le_16k", 16000],
+  ["mulaw_8k", 8000],
+]);
+
 // POST /v1/agente-voz/sesiones
 async function crearSesion(req, res) {
   const idEmpresa = req.apiVozEmpresa;
-  const { id_plantilla, id_tool, variables = {}, codec = "pcm_s16le_16k", metadata = null } = req.body || {};
+  const { id_plantilla, id_tool, variables = {}, metadata = null } = req.body || {};
+  // null y "" cuentan como "no lo mando": el default de destructuring solo cubre
+  // undefined, y un JSON generado manda null con facilidad. No hay ningun codec
+  // falsy valido, asi que || es seguro aca.
+  const codec = (req.body?.codec) || "pcm_s16le_16k";
 
   // Traza de TODO intento de sesion: si el integrador lanza N llamadas y aqui
   // aparecen menos de N POSTs, la perdida esta de su lado (marcador/Asterisk),
@@ -29,6 +51,15 @@ async function crearSesion(req, res) {
   logger.info(`[sesiones] POST /sesiones empresa=${idEmpresa} plantilla=${id_plantilla} telefono=${variables?.telefono || "?"} activas=${store.contarActivas()}`);
 
   if (!id_plantilla) return err(res, 400, "plantilla_invalida", "id_plantilla requerido");
+
+  // Antes del primer await y de tocar la BD: es el rechazo mas barato posible, y
+  // asi un codec invalido no llega nunca al store, ni a la columna de BD, ni al
+  // codec_acordado de la respuesta. El mensaje enumera los validos para que el
+  // integrador lo arregle leyendo la respuesta, sin abrir un ticket.
+  const sampleRate = CODECS.get(codec);
+  if (!sampleRate) {
+    return err(res, 400, "codec_invalido", `codec no soportado. Valores validos: ${[...CODECS.keys()].join(", ")}.`);
+  }
 
   const agente = new AgenteVozModel();
   try {
@@ -97,8 +128,6 @@ async function crearSesion(req, res) {
           `(el agente puede leerlas en voz alta) empresa=${idEmpresa}: ${huerfanas.join(", ")}`
       );
     }
-
-    const sampleRate = codec === "mulaw_8k" ? 8000 : 16000;
 
     // Generamos el session_id aqui para inyectarlo como static param de las tools.
     // Asi las tools (tipificarLlamada / agendar_cita) lo mandan a app-api y la

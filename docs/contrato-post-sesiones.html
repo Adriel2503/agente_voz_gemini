@@ -93,7 +93,7 @@
     <tr><td><code>variables</code></td><td><span class="pill opt">objeto</span></td><td>Default <code>{}</code>. Se valida contra el formato (ver §3) y alimenta el prompt.</td></tr>
     <tr><td><code>id_voz</code></td><td><span class="pill opt">opcional</span></td><td>Si no viene, usa la voz default del env. Si es inválida → <code>400 voz_invalida</code>.</td></tr>
     <tr><td><code>id_tool</code></td><td><span class="pill opt">opcional</span></td><td>Cae al <code>id_tool</code> de la empresa. Debe ser tipo <code>llamada</code>.</td></tr>
-    <tr><td><code>codec</code></td><td><span class="pill opt">opcional</span></td><td>Default <code>pcm_s16le_16k</code>.</td></tr>
+    <tr><td><code>codec</code></td><td><span class="pill opt">opcional</span></td><td>Solo <code>pcm_s16le_16k</code> (16000 Hz) o <code>mulaw_8k</code> (8000 Hz). Default <code>pcm_s16le_16k</code>; <code>null</code> cuenta como no enviado. Cualquier otro valor → <code>400 codec_invalido</code> (antes se aceptaba y se trataba como PCM16 16k: la llamada sonaba pero el audio era ruido).</td></tr>
     <tr><td><code>metadata</code></td><td><span class="pill opt">opcional</span></td><td><code>metadata.external_call_id</code> se usa como <code>provider_call_id</code> en las tools/webhooks.</td></tr>
     <tr><td><code>velocidad</code></td><td><span class="pill opt">opcional</span></td><td>Override de velocidad del habla. Si no es numérica → <code>400 velocidad_invalida</code>.</td></tr>
   </table></div>
@@ -165,7 +165,7 @@ return { ok: faltantes.length === 0, faltantes };</code></pre>
     <tr><th>HTTP</th><th>codigo</th><th>Causa</th></tr>
     <tr><td>400</td><td><code>plantilla_invalida</code></td><td>Falta <code>id_plantilla</code>, o no existe / es de otra empresa.</td></tr>
     <tr><td>400</td><td><code>variables_incompletas</code></td><td>Falta ≥1 campo <code>requerido=1</code>. Devuelve <code>faltantes[]</code>.</td></tr>
-    <tr><td>400</td><td><code>voz_invalida</code> / <code>tool_invalida</code> / <code>velocidad_invalida</code></td><td>Parámetro opcional presente pero inválido.</td></tr>
+    <tr><td>400</td><td><code>voz_invalida</code> / <code>tool_invalida</code> / <code>velocidad_invalida</code> / <code>codec_invalido</code></td><td>Parámetro opcional presente pero inválido.</td></tr>
     <tr><td>401</td><td><code>auth_invalida</code></td><td>Empresa no encontrada.</td></tr>
     <tr><td>503</td><td><code>agente_indisponible</code></td><td>API de voz inactiva, sin key, o sin canales libres.</td></tr>
   </table></div>

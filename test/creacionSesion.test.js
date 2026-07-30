@@ -74,10 +74,10 @@ stub("../src/services/feriados.service.js", { getFeriadosTextoPrompt: async () =
 const { crearSesion } = require("../src/controllers/sesiones.controller.js");
 const store = require("../src/sessions/store.js");
 
-function reqFake() {
+function reqFake(extra = {}) {
   return {
     apiVozEmpresa: EMPRESA,
-    body: { id_plantilla: 5, variables: { nombre: "Ana", telefono: "999" } },
+    body: { id_plantilla: 5, variables: { nombre: "Ana", telefono: "999" }, ...extra },
     headers: { host: "agente.test", authorization: "Bearer tok" },
     query: {},
   };
@@ -128,4 +128,62 @@ test("camino feliz: la sesion queda registrada, ocupa canal y devuelve 201", asy
   assert.ok(upserts[0].fecha_inicio);
 
   store.eliminar(res.body.session_id);
+});
+
+// --- whitelist de codec ---
+//
+// El ternario que habia antes (codec === "mulaw_8k" ? 8000 : 16000) aceptaba
+// cualquier cosa y la trataba como PCM16 16k. Un typo del integrador ("mulaw_8000")
+// no daba error: daba una llamada que sonaba, quemaba canal y tokens, y del otro
+// lado solo se escuchaba ruido blanco, sin una sola linea de log que dijera codec.
+
+test("codec desconocido: 400 y no llega a reservar canal", async () => {
+  const res = resFake();
+
+  await crearSesion(reqFake({ codec: "mulaw_8000" }), res);
+
+  assert.strictEqual(res.statusCode, 400);
+  assert.strictEqual(res.body.codigo, "codec_invalido");
+  assert.match(res.body.msg, /pcm_s16le_16k/, "el mensaje enumera los validos");
+  assert.strictEqual(store.contarActivasPorEmpresa(EMPRESA), 0, "rechaza antes de reservar");
+  assert.strictEqual(upserts.length, 0, "ni siquiera toca la BD");
+});
+
+// El caso que un objeto literal dejaria pasar: CODECS["toString"] seria una
+// funcion (truthy). Con Map.get es undefined.
+test("un nombre del prototipo de Object no se cuela por la whitelist", async () => {
+  const res = resFake();
+
+  await crearSesion(reqFake({ codec: "toString" }), res);
+
+  assert.strictEqual(res.statusCode, 400);
+  assert.strictEqual(res.body.codigo, "codec_invalido");
+});
+
+test("mulaw_8k: 201 con sample rate 8000", async () => {
+  const res = resFake();
+
+  await crearSesion(reqFake({ codec: "mulaw_8k" }), res);
+
+  assert.strictEqual(res.statusCode, 201);
+  assert.strictEqual(res.body.sample_rate_hz, 8000);
+  assert.strictEqual(res.body.codec_acordado, "mulaw_8k");
+
+  store.eliminar(res.body.session_id);
+});
+
+// null tiene que seguir contando como "no lo mando": el default de destructuring
+// solo cubre undefined, y romper por una diferencia de serializacion seria
+// gratuito.
+test("codec null o ausente cae al default de 16k", async () => {
+  for (const body of [{ codec: null }, {}]) {
+    const res = resFake();
+    await crearSesion(reqFake(body), res);
+
+    assert.strictEqual(res.statusCode, 201);
+    assert.strictEqual(res.body.sample_rate_hz, 16000);
+    assert.strictEqual(res.body.codec_acordado, "pcm_s16le_16k");
+
+    store.eliminar(res.body.session_id);
+  }
 });
