@@ -110,10 +110,34 @@ async function crearSesion(req, res) {
       backendUrl: env.toolsBackendUrl, // null = dejar URLs ai-you.io tal cual
     });
 
-    // Registro de la sesion ANTES de armar el motor: para POST /terminar y para
-    // que purgarExpiradas la limpie si el integrador nunca conecta su WSS.
-    // Gemini limita por TPM, no por canales: no hay tope de concurrencia por
-    // empresa (ver docs/remover-ultravox.md, decision A).
+    // Tope de concurrencia por empresa (empresa.canal). Se repone la guardia que
+    // se retiro en ba7e364 al migrar a Gemini: el razonamiento de entonces
+    // ("Gemini limita por TPM, no por canales") era correcto, pero dejo al
+    // gateway sin ninguna guardia y el 16-jul una campana abrio 63 llamadas/min
+    // contra un techo de ~18 (ver docs/capacidad-gemini-live.html).
+    // canal <= 0 o NULL = sin limite, igual que antes.
+    //
+    // OJO AL ORDEN: este chequeo y el store.crear de abajo tienen que quedar en
+    // el mismo bloque SINCRONICO, sin ningun await en el medio. Node es
+    // monohilo, asi que chequear-y-reservar solo es atomico si nada cede el
+    // control entre ambos; si se chequeara mas arriba, una rafaga pasaria entera
+    // antes de que la primera sesion se registre (el 16-jul entraron 17 sesiones
+    // en 10 segundos, que es justo el caso que esto tiene que frenar).
+    const canal = Number(empresa.canal) || 0;
+    if (canal > 0) {
+      const activas = store.contarActivasPorEmpresa(idEmpresa);
+      if (activas >= canal) {
+        // Nunca se loguea la api key ni un fragmento (leccion de 621f770): con
+        // empresa y ocupacion alcanza para diagnosticar el rechazo.
+        logger.warn(`[sesiones] RECHAZADO 503 sin canales empresa=${idEmpresa} ocupacion=${activas}/${canal}`);
+        res.set("Retry-After", "30");
+        return err(res, 503, "agente_indisponible", "Sin canales disponibles. Reintente en unos segundos.");
+      }
+    }
+
+    // Registro de la sesion ANTES de armar el motor: reserva el canal para que
+    // dos POST concurrentes no pasen el mismo cupo, sirve para POST /terminar y
+    // deja que purgarExpiradas la limpie si el integrador nunca conecta su WSS.
     const registro = store.crear({
       session_id: sessionId,
       idEmpresa,

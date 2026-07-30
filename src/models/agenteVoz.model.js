@@ -8,10 +8,11 @@ class AgenteVozModel {
   }
 
   // empresa: key de Gemini por empresa (fallback a GEMINI_API_KEY global si es
-  // NULL), gate de voz (api_voz_activo) y tool por defecto.
+  // NULL), cupo de sesiones concurrentes (`canal`, tope anti-runaway del POST
+  // /sesiones), gate de voz (api_voz_activo) y tool por defecto.
   async getEmpresa(idEmpresa) {
     const [rows] = await this.connection.execute(
-      `SELECT id, gemini_api_key, api_voz_activo, id_tool
+      `SELECT id, gemini_api_key, canal, api_voz_activo, id_tool
        FROM empresa WHERE id = ? AND estado_registro = 1`,
       [idEmpresa]
     );

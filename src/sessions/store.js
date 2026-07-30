@@ -48,13 +48,26 @@ function purgarExpiradas(maxEdadMs = 30000) {
   }
 }
 
-// Total de sesiones activas (no finalizadas) en esta instancia. Solo para traza
-// (el log del POST /sesiones). Ya no hay tope por canal: Gemini limita por TPM,
-// no por canales concurrentes (ver docs/remover-ultravox.md, decision A).
+// Total de sesiones activas (no finalizadas) en esta instancia, TODAS las
+// empresas juntas. Solo para traza (el log del POST /sesiones): para el tope de
+// concurrencia usar contarActivasPorEmpresa, que es el que no mezcla empresas.
 function contarActivas() {
   let n = 0;
   for (const s of sesiones.values()) if (s.estado !== "finalizada") n++;
   return n;
 }
 
-module.exports = { crear, obtener, actualizar, eliminar, buscar, purgarExpiradas, contarActivas, nuevoSessionId };
+// Sesiones activas de UNA empresa = canales ocupados. Es el contador del tope
+// empresa.canal (ver docs/guardias-anti-runaway.md): cuenta la sesion desde que
+// crearSesion la reserva (antes del await a Gemini) hasta que cerrar() la marca
+// finalizada. NOTA: en memoria = conteo por instancia; con N replicas el tope NO
+// es global (ver la nota del encabezado del store).
+function contarActivasPorEmpresa(idEmpresa) {
+  let n = 0;
+  for (const s of sesiones.values()) {
+    if (s.idEmpresa === idEmpresa && s.estado !== "finalizada") n++;
+  }
+  return n;
+}
+
+module.exports = { crear, obtener, actualizar, eliminar, buscar, purgarExpiradas, contarActivas, contarActivasPorEmpresa, nuevoSessionId };
