@@ -165,26 +165,31 @@ async function crearSesion(req, res) {
       }
     }
 
-    // Limite de sesiones NUEVAS por minuto de esta empresa. Es la guardia que de
-    // verdad corta el lazo de realimentacion: el tope de canales de arriba acota
-    // el daño pero no frena un desbocamiento de tasa (el 16-jul los 15 canales
-    // se reciclaron 63 veces por minuto). Un rechazo aca es gratis: no abre
-    // sesion Gemini ni consume un token, a diferencia de un RESOURCE_EXHAUSTED
-    // que ya pago los ~8.000 del setup.
+    // Limite de tasa de sesiones NUEVAS de esta empresa (balde de tokens: rpm =
+    // ritmo sostenido, rafaga = cuantas de golpe). Es la guardia que de verdad
+    // corta el lazo de realimentacion: el tope de canales de arriba acota el
+    // daño pero no frena un desbocamiento de tasa (el 16-jul los 15 canales se
+    // reciclaron 63 veces por minuto). Un rechazo aca es gratis: no abre sesion
+    // Gemini ni consume un token de Google, a diferencia de un
+    // RESOURCE_EXHAUSTED que ya pago los ~8.000 del setup.
     //
-    // Va DESPUES del tope de canales a proposito: admitir() registra la apertura
-    // al admitirla, asi que si se chequeara primero, un rechazo por canales
-    // igual habria consumido un cupo de tasa.
+    // Va DESPUES del tope de canales a proposito: admitir() consume el token al
+    // admitir, asi que si se chequeara primero, un rechazo por canales igual
+    // habria gastado cupo de tasa.
     //
-    // El limite se resuelve aca y se pasa ya listo: el modulo no lee config. El
-    // dia que una empresa necesite un valor propio, esta linea pasa a ser
-    // `empresa.max_rpm ?? env.maxRpmPorEmpresa` (con ??, no ||: un 0 en BD
-    // significa "sin limite para esta empresa" y || lo pisaria con el del env).
+    // Los limites se resuelven aca y se pasan ya listos: el modulo no lee
+    // config. El dia que una empresa necesite valores propios, estas lineas
+    // pasan a ser `empresa.max_rpm ?? env.maxRpmPorEmpresa` (con ??, no ||: un
+    // 0 en BD significa "sin limite para esta empresa" y || lo pisaria).
     const limiteRpm = env.maxRpmPorEmpresa;
+    const rafaga = env.maxRafagaPorEmpresa;
     if (limiteRpm > 0) {
-      const tasa = tasaSesiones.admitir(idEmpresa, limiteRpm);
+      const tasa = tasaSesiones.admitir(idEmpresa, limiteRpm, rafaga);
       if (!tasa.ok) {
-        logger.warn(`[sesiones] RECHAZADO 503 tasa excedida empresa=${idEmpresa} aperturas=${tasa.usados}/${limiteRpm} en 60s`);
+        logger.warn(
+          `[sesiones] RECHAZADO 503 tasa excedida empresa=${idEmpresa} ` +
+          `tokens=${tasa.tokens.toFixed(1)}/${rafaga} rpm=${limiteRpm}`
+        );
         res.set("Retry-After", "30");
         return err(res, 503, "tasa_excedida", "Limite de llamadas nuevas por minuto alcanzado. Reintente en unos segundos.");
       }

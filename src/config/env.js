@@ -52,6 +52,13 @@ const env = {
   // A futuro esto puede salir de empresa.max_rpm con fallback a este valor; el
   // punto de resolucion es una sola linea en crearSesion.
   maxRpmPorEmpresa: parseInt(process.env.MAX_RPM_POR_EMPRESA, 10) || 15,
+  // Capacidad del balde de tokens: cuantas sesiones pueden abrirse DE GOLPE
+  // antes de que mande el ritmo de arriba (MAX_RPM refill = 1 token cada
+  // 60/rpm segundos). Es el parametro que frena la rafaga del 16-jul: 15
+  // llegadas en 8s con rafaga=5 y rpm=15 admiten 6 y rebotan 9; la ventana
+  // deslizante anterior admitia las 15. Cota util: en un lapso T entran a lo
+  // sumo rafaga + rpm*T/60. Igual que MAX_RPM, sin semantica especial de 0.
+  maxRafagaPorEmpresa: parseInt(process.env.MAX_RAFAGA_POR_EMPRESA, 10) || 5,
   audioSampleRate: parseInt(process.env.AUDIO_SAMPLE_RATE, 10) || 8000,
   // Ventana de gracia tras el colgado del caller para que el agente alcance a
   // tipificar (tool tipificarLlamada) antes de cerrar la sesion y disparar el

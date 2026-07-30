@@ -73,6 +73,7 @@ stub("../src/services/feriados.service.js", { getFeriadosTextoPrompt: async () =
 
 const { crearSesion } = require("../src/controllers/sesiones.controller.js");
 const store = require("../src/sessions/store.js");
+const tasaSesiones = require("../src/lib/tasaSesiones.js");
 
 function reqFake(extra = {}) {
   return {
@@ -94,6 +95,10 @@ function resFake() {
 test.beforeEach(() => {
   fallaUpsert = false;
   upserts = [];
+  // Sin esto, el balde de tokens (rafaga default 5) se agota con las creaciones
+  // exitosas acumuladas de la suite y el 6to test rebotaria 503 tasa_excedida
+  // de forma nada obvia.
+  tasaSesiones._reset();
 });
 
 test("si falla el upsert de creacion, no queda canal ocupado", async () => {

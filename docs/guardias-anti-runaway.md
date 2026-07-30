@@ -96,11 +96,29 @@ toca.
 
 ## Guardia 2 — límite de tasa de apertura
 
-Cuántas sesiones nuevas por minuto admitimos. **Ventana deslizante**, no minuto
-de reloj: la cuota de Gemini es deslizante (el análisis lo midió — el minuto
-15:53 marcó 80 % y aun así falló, porque entre 15:52:15 y 15:53:15 entraron
-~21 sesiones = 112 %). Una ventana fija de reloj permite el doble del límite a
-caballo del borde, que es justo el patrón de ráfaga que causó el incidente.
+Cuántas sesiones nuevas admitimos. **Balde de tokens** (30-jul-2026; reemplazó a
+la ventana deslizante del primer despliegue): cada empresa tiene un balde de
+capacidad `rafaga` que se repone a razón de `rpm/60` tokens por segundo; cada
+apertura consume 1 token y sin token rebota.
+
+**Por qué se reemplazó la ventana.** La ventana deslizante acotaba el sostenido
+(15/min sobre cualquier ventana de 60 s, incluso a caballo del borde de minuto),
+pero **no la ráfaga instantánea**: 15 sesiones en 8 segundos entraban todas,
+porque la ventana arrancaba vacía — y eso fue literalmente el disparador del
+16-jul (17 sesiones en 10 segundos). El balde separa las dos cosas que la
+ventana fundía en un solo número:
+
+| Parámetro | Controla | Default |
+|-----------|----------|---------|
+| `MAX_RAFAGA_POR_EMPRESA` (capacidad) | cuánto entra **de golpe** | 5 |
+| `MAX_RPM_POR_EMPRESA` (refill) | cuánto entra **sostenido** por minuto | 15 |
+
+Cota: en cualquier lapso de T segundos entran a lo sumo `rafaga + rpm·T/60`.
+Con los defaults, el escenario del 16-jul (15 llegadas en 8 s) admite 6 y rebota
+9, donde la ventana admitía las 15. El peor primer minuto es `rafaga + rpm` = 20.
+El refill es continuo (no hay bordes de minuto), así que la propiedad de la
+ventana deslizante que importaba —no permitir 2× el límite a caballo del borde—
+se conserva.
 
 ### El límite es POR EMPRESA
 
@@ -110,20 +128,22 @@ empresas pueden generar 150 aperturas/min entre todas y ninguna se rechaza,
 porque cada una lleva su propio contador. El sufijo va en el nombre para que no
 se lea como global.
 
-### Cuándo se consume un slot
+### Cuándo se consume un token
 
-`admitir()` registra la apertura **en el momento de admitirla**, dentro del mismo
-bloque sincrónico.
+`admitir()` consume el token **en el momento de admitir**, dentro del mismo
+bloque sincrónico. Un rechazo no consume ni registra nada: el refill sigue
+corriendo igual, así que un bucle de reintentos no atrasa la reposición.
 
 | Situación | ¿Consume? |
 |-----------|-----------|
 | `400 variables_incompletas` | No — nunca llega al bloque |
 | Rechazo por canales | No — el tope de canales se chequea **antes** |
+| Rechazo por tasa | No — el rebote no descuenta |
 | Admitida, y después falla `crearLlamadaServerWs` | **Sí**, deliberado |
 
-El orden entre las dos guardias no es casual: como `admitir()` registra al
+El orden entre las dos guardias no es casual: como `admitir()` consume al
 admitir, si se chequeara la tasa primero un rechazo por canales igual habría
-consumido un cupo.
+gastado un token.
 
 El último caso también es a propósito: aunque `store.eliminar` libere el canal,
 ese intento **ya llegó a Gemini y ya pagó tokens**. Devolver el cupo invitaría a
@@ -147,18 +167,20 @@ riesgo de que alguien acierte la equivocada. Es un valor que no hay que escribir
 pasar** la sesión: ante una config rota es preferible quedarse sin guardia (el
 estado de ayer) antes que dejar a la empresa sin atender llamadas.
 
-El día que una empresa necesite un valor propio, sale de una columna
-`empresa.max_rpm` nullable con fallback al env — el mismo patrón que el repo ya
-usa para `empresa.gemini_api_key`. Para que esa migración sea trivial, **el
-módulo no lee configuración**: recibe el límite ya resuelto, y toda la decisión
-vive en una línea del controller.
+El día que una empresa necesite valores propios, salen de columnas
+`empresa.max_rpm` / `empresa.max_rafaga` nullables con fallback al env — el
+mismo patrón que el repo ya usa para `empresa.gemini_api_key`. Para que esa
+migración sea trivial, **el módulo no lee configuración**: recibe `rpm` y
+`rafaga` ya resueltos, y toda la decisión vive en dos líneas del controller.
 
 ```js
 // HOY
 const limiteRpm = env.maxRpmPorEmpresa;
+const rafaga = env.maxRafagaPorEmpresa;
 
-// MAÑANA (+ agregar max_rpm al SELECT de getEmpresa)
+// MAÑANA (+ agregar las columnas al SELECT de getEmpresa)
 const limiteRpm = empresa.max_rpm ?? env.maxRpmPorEmpresa;
+const rafaga = empresa.max_rafaga ?? env.maxRafagaPorEmpresa;
 ```
 
 **`??` y no `||`.** Un `0` cargado en BD significa "a esta empresa no le apliques
@@ -220,7 +242,7 @@ como opcional del mismo PR.
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/lib/tasaSesiones.js` | **nuevo** — ventana deslizante en memoria |
+| `src/lib/tasaSesiones.js` | **nuevo** — balde de tokens en memoria (nació como ventana deslizante; reemplazada el 30-jul) |
 | `src/sessions/store.js` | + `contarActivasPorEmpresa(idEmpresa)` |
 | `src/models/agenteVoz.model.js` | `getEmpresa`: agregar `canal` al SELECT |
 | `src/controllers/sesiones.controller.js` | las dos guardias antes de `store.crear` |
@@ -291,10 +313,12 @@ Ambos módulos son puros: se testean sin BD ni WS, con reloj inyectado.
       habría mezclado empresas); guardia en `crearSesion` pegada a `store.crear`.
       Tests en `test/topeConcurrencia.test.js`.
       Los valores de BD **no se tocaron**: Credicash sigue en 15.
-- [x] **Guardia de tasa (`MAX_RPM_POR_EMPRESA`)** — hecha 2026-07-30. Ventana
-      deslizante de 60 s por empresa en `src/lib/tasaSesiones.js`; chequeo en
-      `crearSesion` después del de canales. Tests en `test/tasaSesiones.test.js`;
-      suite 73/73. **Default 15: activa desde el despliegue.**
+- [x] **Guardia de tasa (`MAX_RPM_POR_EMPRESA`)** — hecha 2026-07-30. Nació como
+      ventana deslizante de 60 s y el mismo día se reemplazó por **balde de
+      tokens** (`MAX_RAFAGA_POR_EMPRESA`, default 5): la ventana no frenaba la
+      ráfaga instantánea, que fue el disparador real del 16-jul. Chequeo en
+      `crearSesion` después del de canales. Tests en `test/tasaSesiones.test.js`.
+      **Defaults 15 rpm / 5 ráfaga: activa desde el despliegue.**
 - [ ] Actualizar `contrato-post-sesiones.html` con los códigos de rechazo
       (`agente_indisponible` por canales, `tasa_excedida` por tasa)
 - [ ] *(operativo)* Confirmar el valor de `MAX_RPM_POR_EMPRESA` en producción:
