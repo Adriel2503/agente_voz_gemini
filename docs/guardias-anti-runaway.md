@@ -49,8 +49,8 @@ flowchart TD
     B --> C[plantilla · campos · tools · tipificaciones]
     C --> D[render prompt · tiendas · feriados]
     D --> E{{GUARDIAS — bloque sincrónico}}
-    E -->|concurrencia llena| R1[503 sin_canales + Retry-After]
-    E -->|tasa excedida| R2[503 tasa_excedida + Retry-After]
+    E -->|1· canal lleno| R1[503 agente_indisponible + Retry-After]
+    E -->|2· tasa excedida| R2[503 tasa_excedida + Retry-After]
     E -->|admitida| F[store.crear = reserva]
     F --> G[await gemini.crearLlamadaServerWs]
     G -->|error| H[store.eliminar → 502/503]
@@ -102,49 +102,77 @@ de reloj: la cuota de Gemini es deslizante (el análisis lo midió — el minuto
 ~21 sesiones = 112 %). Una ventana fija de reloj permite el doble del límite a
 caballo del borde, que es justo el patrón de ráfaga que causó el incidente.
 
-### Por qué el bucket es la API key, no la empresa
+### El límite es POR EMPRESA
 
-La cuota de TPM es **por key**. Con el rollout de keys por empresa a medio camino
-([keys-gemini-por-empresa.md](keys-gemini-por-empresa.md)), agrupar por empresa
-sería incorrecto: dos empresas todavía en el fallback global comparten una sola
-cuota, y con 10/min cada una sumarían 20/min sobre la misma key = por encima del
-techo de 18,75.
-
-Bucketear por **key efectiva** (`empresa.gemini_api_key || env.gemini.apiKey`) da
-el agrupamiento correcto en ambos casos y sigue siendo correcto a medida que
-avanza el rollout, sin tocar nada. Es el mismo patrón que el viejo
-`contarPorApiKey`.
-
-La key se usa **solo como clave del Map en memoria y nunca se loguea** — el log
-lleva `empresa=N`. Precedente explícito: commit `621f770` (*"no loguear fragmento
-de la api key en el rechazo 503"*).
-
-Para no duplicar la resolución del fallback, `gemini.service.js` exporta un
-helper (`resolverKey`) que usan tanto `crearLlamadaServerWs` como el controller.
+`MAX_RPM_POR_EMPRESA` es el máximo de sesiones nuevas por minuto que puede abrir
+**cada empresa**, no un tope global del gateway: con el valor en 15, diez
+empresas pueden generar 150 aperturas/min entre todas y ninguna se rechaza,
+porque cada una lleva su propio contador. El sufijo va en el nombre para que no
+se lea como global.
 
 ### Cuándo se consume un slot
 
-Se registra el timestamp **en el momento de admitir**, en el mismo bloque
-sincrónico, no antes.
+`admitir()` registra la apertura **en el momento de admitirla**, dentro del mismo
+bloque sincrónico.
 
-- Un `400 variables_incompletas` **no** consume slot: nunca tocó Gemini.
-- Una sesión admitida que después falla en `crearLlamadaServerWs` **sí** deja el
-  slot consumido, aunque `store.eliminar` libere el canal. Es deliberado: ese
-  intento **ya llegó a Gemini y ya pagó tokens**. Devolver el slot invitaría a
-  reintentar exactamente en el escenario donde la cuota está saturada.
+| Situación | ¿Consume? |
+|-----------|-----------|
+| `400 variables_incompletas` | No — nunca llega al bloque |
+| Rechazo por canales | No — el tope de canales se chequea **antes** |
+| Admitida, y después falla `crearLlamadaServerWs` | **Sí**, deliberado |
 
-### Parámetro
+El orden entre las dos guardias no es casual: como `admitir()` registra al
+admitir, si se chequeara la tasa primero un rechazo por canales igual habría
+consumido un cupo.
 
-`MAX_SESIONES_POR_MINUTO`, default **10** (~55 % del techo de 18,75, que es donde
-el sistema tolera >60 % de fallo transitorio sin entrar en espiral). `0` =
-desactivado, misma semántica de escape que `canal <= 0` — importante tener el
-interruptor de apagado en una guardia que puede rechazar tráfico productivo.
+El último caso también es a propósito: aunque `store.eliminar` libere el canal,
+ese intento **ya llegó a Gemini y ya pagó tokens**. Devolver el cupo invitaría a
+reintentar justo cuando la cuota está saturada.
 
-Se decide por env global (aplicado por bucket) y no por columna en BD: hoy el
-volumen real es de una empresa, y una columna nueva es una migración + rollout
-que no hace falta para cerrar el riesgo. Una `empresa.max_sesiones_minuto`
-aditiva y nullable queda como paso posterior si aparece una segunda empresa con
-volumen, siguiendo el mismo patrón de `gemini_api_key`.
+### Parámetro: env ahora, BD después
+
+`MAX_RPM_POR_EMPRESA`, default **15** (80 % de la cuota con el prompt actual).
+`0` = desactivado, misma semántica de escape que `canal <= 0`.
+
+> **La guardia queda activa sin configurar nada.** Credicash genera hoy ~16,1
+> RPM en operación normal, así que con 15 se le rechaza **~7 % de los intentos**
+> desde el primer despliegue. Es un recorte chico y deliberado — pero es un
+> cambio de comportamiento en producción, no un cambio inerte. Para no tocar su
+> operación, 17; para más margen ante ráfagas, 13.
+
+El parseo usa un helper `entero()` en vez del `parseInt(...) || def` del resto
+del archivo, porque con `||` un `0` seteado a propósito en el env se pisaría con
+el default y **no habría forma de apagar la guardia**.
+
+El día que una empresa necesite un valor propio, sale de una columna
+`empresa.max_rpm` nullable con fallback al env — el mismo patrón que el repo ya
+usa para `empresa.gemini_api_key`. Para que esa migración sea trivial, **el
+módulo no lee configuración**: recibe el límite ya resuelto, y toda la decisión
+vive en una línea del controller.
+
+```js
+// HOY
+const limiteRpm = env.maxRpmPorEmpresa;
+
+// MAÑANA (+ agregar max_rpm al SELECT de getEmpresa)
+const limiteRpm = empresa.max_rpm ?? env.maxRpmPorEmpresa;
+```
+
+**`??` y no `||`.** Un `0` cargado en BD significa "a esta empresa no le apliques
+límite"; con `||` ese 0 caería al valor del env y haría lo contrario de lo
+pedido. (Con `canal` da igual: ahí NULL y 0 significan lo mismo.)
+
+No se crea la columna todavía, ni una capa de resolución de configuración: la
+línea suelta ya es la costura, y migrar después son 2 líneas.
+
+Referencia para calibrar (prompt ~8.000 tokens, cuota 150.000 TPM):
+
+| Valor | % cuota | Efecto sobre Credicash (hoy 16,1 RPM) |
+|-------|---------|----------------------------------------|
+| 17 | 91 % | no rechaza nada hoy, pero opera al filo del techo |
+| 15 | 80 % | recorta ~7 % de los intentos |
+| 13 | 69 % | zona objetivo del análisis; recorta ~19 % |
+| 10 | 53 % | máxima protección, pero asume bajar a 9 operadores; con 15 rechaza ~38 % |
 
 ## Contrato HTTP
 
@@ -174,8 +202,8 @@ el contrato de status codes. Revisar
 Sin BD, mismo criterio que `metricasCierre.js`: que se vea en el log.
 
 ```
-[sesiones] RECHAZADO 503 sin_canales empresa=8 ocupacion=15/15
-[sesiones] RECHAZADO 503 tasa_excedida empresa=8 aperturas=10/10 en 60s
+[sesiones] RECHAZADO 503 sin canales empresa=8 ocupacion=15/15
+[sesiones] RECHAZADO 503 tasa excedida empresa=8 aperturas=15/15 en 60s
 ```
 
 Un rechazo silencioso acá es una llamada que suena sin IA del otro lado — el
@@ -192,34 +220,38 @@ como opcional del mismo PR.
 | `src/lib/tasaSesiones.js` | **nuevo** — ventana deslizante en memoria |
 | `src/sessions/store.js` | + `contarActivasPorEmpresa(idEmpresa)` |
 | `src/models/agenteVoz.model.js` | `getEmpresa`: agregar `canal` al SELECT |
-| `src/services/gemini.service.js` | exportar `resolverKey(geminiApiKey)`; `crearLlamadaServerWs` lo usa |
-| `src/controllers/sesiones.controller.js` | bloque de guardias antes de `store.crear` |
-| `src/config/env.js` | + `maxSesionesPorMinuto` |
-| `.env.example` | + `MAX_SESIONES_POR_MINUTO=10` |
+| `src/controllers/sesiones.controller.js` | las dos guardias antes de `store.crear` |
+| `src/config/env.js` | + `maxRpmPorEmpresa` (default 0) |
+| `.env.example` | + `MAX_RPM_POR_EMPRESA=0` |
 
 ### API de `tasaSesiones.js`
 
 ```js
 // Chequeo y registro en UNA operación: un caller no puede admitir y olvidarse
 // de registrar. `ahora` inyectable para que los tests no duerman.
-admitir(bucket, limite, ahora = Date.now()) -> { ok, usados, limite }
+admitir(idEmpresa, limite, ahora = Date.now()) -> { ok, usados, limite }
+
+usados(idEmpresa, ahora)   // solo lectura, para logs y tests
+purgar(ahora)              // descarta empresas sin aperturas vigentes
 ```
 
-Guarda un array de timestamps por bucket, podando los > 60 s en cada consulta.
-Acotado por el propio límite (~10-20 entradas por bucket); se eliminan los
-buckets que quedan vacíos.
+Guarda un array de timestamps por empresa, podando los > 60 s en cada consulta.
+Acotado por el propio límite (~15-30 entradas por empresa). `limite <= 0` =
+desactivado, misma semántica de escape que `canal <= 0`.
 
 ## Tests
 
 Ambos módulos son puros: se testean sin BD ni WS, con reloj inyectado.
 
-`test/tasaSesiones.test.js`
+`test/tasaSesiones.test.js` (reloj inyectado, sin `sleep`)
 - admite hasta el límite y rechaza el siguiente
-- la ventana **desliza**: rechazada en t=0..59 s, admitida en t=61 s
+- la ventana **desliza**: rechazada en t=59 s, admitida en t=61 s
 - ráfaga a caballo del borde de minuto **no** permite 2× el límite (el caso que
   falla con ventana fija — es el test que justifica el diseño)
-- `limite = 0` desactiva la guardia
-- buckets independientes no se pisan
+- `limite = 0` desactiva la guardia y no acumula estado
+- **empresas independientes no se pisan** (verifica que el límite es por empresa)
+- el rechazo en bucle no acumula timestamps viejos
+- `purgar` descarta empresas sin aperturas vigentes
 
 `test/topeConcurrencia.test.js`
 - `contarActivasPorEmpresa` no mezcla empresas
@@ -228,6 +260,16 @@ Ambos módulos son puros: se testean sin BD ni WS, con reloj inyectado.
 
 ## Límites conocidos
 
+- **La cuota de Gemini es por API key, no por empresa.** Hoy solo Credicash tiene
+  `gemini_api_key` propia; el resto cae al `GEMINI_API_KEY` global
+  ([keys-gemini-por-empresa.md](keys-gemini-por-empresa.md)). Para esas empresas
+  los contadores son independientes pero **la cuota que consumen es compartida**:
+  con el límite en 15, dos empresas sobre la key global suman 30 aperturas/min =
+  240.000 TPM contra una cuota de 150.000, y Gemini rechaza aunque ninguna haya
+  tocado su tope. No es un defecto del diseño, es su alcance: **cubre el runaway
+  de una empresa, no la suma de empresas sobre una key compartida**. Se cierra
+  completando el rollout de keys por empresa. Mientras tanto, calibrar contando
+  cuántas empresas cuelgan de la key global.
 - **Una sola instancia.** Ambas guardias son en memoria y por proceso. Con N
   réplicas en EasyPanel el límite efectivo es N×. `store.js` ya arrastra esta
   nota; si se escala, ambas guardias se van a Redis junto con el store.
@@ -238,30 +280,23 @@ Ambos módulos son puros: se testean sin BD ni WS, con reloj inyectado.
   compactar el prompt de la plantilla 139 (recomendación #3), que es trabajo de
   contenido, no de este repo.
 
-## Orden de implementación
-
-1. `tasaSesiones.js` + su test (aislado, sin dependencias).
-2. `contarActivasPorEmpresa` en el store + su test.
-3. `canal` en `getEmpresa`; `resolverKey` en `gemini.service`.
-4. Bloque de guardias en el controller.
-5. `env.js` + `.env.example`.
-6. Suite completa (`node --test`) + `node --check` de cada archivo tocado.
-7. Commit conventional: `feat(sesiones): guardias de concurrencia y tasa de apertura`.
-
-## Decisiones abiertas (resolver antes de implementar la guardia 2)
-
-- **Valor de `MAX_SESIONES_POR_MINUTO`**: 10 propuesto. Es el único parámetro que
-  puede rechazar tráfico bueno si queda corto.
-
 ## Estado
 
 - [x] **Guardia de concurrencia (`empresa.canal`)** — restauración fiel, hecha
-      2026-07-30. `canal` vuelve al SELECT de `getEmpresa`; nuevo
+      2026-07-30 (`6370cab`). `canal` vuelve al SELECT de `getEmpresa`; nuevo
       `store.contarActivasPorEmpresa` (el `contarActivas` existente es global y
       habría mezclado empresas); guardia en `crearSesion` pegada a `store.crear`.
-      Tests en `test/topeConcurrencia.test.js`; suite 66/66.
+      Tests en `test/topeConcurrencia.test.js`.
       Los valores de BD **no se tocaron**: Credicash sigue en 15.
-- [ ] Guardia de tasa (`MAX_SESIONES_POR_MINUTO`) ← **es la que corta el lazo**
+- [x] **Guardia de tasa (`MAX_RPM_POR_EMPRESA`)** — hecha 2026-07-30. Ventana
+      deslizante de 60 s por empresa en `src/lib/tasaSesiones.js`; chequeo en
+      `crearSesion` después del de canales. Tests en `test/tasaSesiones.test.js`;
+      suite 73/73. **Default 15: activa desde el despliegue.**
 - [ ] Actualizar `contrato-post-sesiones.html` con los códigos de rechazo
+      (`agente_indisponible` por canales, `tasa_excedida` por tasa)
+- [ ] *(operativo)* Confirmar el valor de `MAX_RPM_POR_EMPRESA` en producción:
+      15 recorta ~7 % de los intentos de Credicash; 17 no toca su operación
 - [ ] *(operativo, aparte)* Bajar `empresa.canal` de Credicash 15 → 9, previa
       verificación de otros lectores de la columna
+- [ ] *(futuro)* Columna `empresa.max_rpm` cuando una segunda empresa necesite un
+      valor propio — 2 líneas: el SELECT y el `??` en `crearSesion`

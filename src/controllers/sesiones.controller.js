@@ -5,6 +5,7 @@ const { enviarWebhook } = require("../services/webhook.service.js");
 const store = require("../sessions/store.js");
 const { renderPromptConFeriados, variablesSinResolver, tipificacionesParaPrompt } = require("../lib/prompt.js");
 const { processTools } = require("../tools/processTools.js");
+const tasaSesiones = require("../lib/tasaSesiones.js");
 const { cargarTiendas } = require("../services/sucursales.service.js");
 const genericaTools = require("../tools/generica.js");
 const env = require("../config/env.js");
@@ -132,6 +133,31 @@ async function crearSesion(req, res) {
         logger.warn(`[sesiones] RECHAZADO 503 sin canales empresa=${idEmpresa} ocupacion=${activas}/${canal}`);
         res.set("Retry-After", "30");
         return err(res, 503, "agente_indisponible", "Sin canales disponibles. Reintente en unos segundos.");
+      }
+    }
+
+    // Limite de sesiones NUEVAS por minuto de esta empresa. Es la guardia que de
+    // verdad corta el lazo de realimentacion: el tope de canales de arriba acota
+    // el daño pero no frena un desbocamiento de tasa (el 16-jul los 15 canales
+    // se reciclaron 63 veces por minuto). Un rechazo aca es gratis: no abre
+    // sesion Gemini ni consume un token, a diferencia de un RESOURCE_EXHAUSTED
+    // que ya pago los ~8.000 del setup.
+    //
+    // Va DESPUES del tope de canales a proposito: admitir() registra la apertura
+    // al admitirla, asi que si se chequeara primero, un rechazo por canales
+    // igual habria consumido un cupo de tasa.
+    //
+    // El limite se resuelve aca y se pasa ya listo: el modulo no lee config. El
+    // dia que una empresa necesite un valor propio, esta linea pasa a ser
+    // `empresa.max_rpm ?? env.maxRpmPorEmpresa` (con ??, no ||: un 0 en BD
+    // significa "sin limite para esta empresa" y || lo pisaria con el del env).
+    const limiteRpm = env.maxRpmPorEmpresa;
+    if (limiteRpm > 0) {
+      const tasa = tasaSesiones.admitir(idEmpresa, limiteRpm);
+      if (!tasa.ok) {
+        logger.warn(`[sesiones] RECHAZADO 503 tasa excedida empresa=${idEmpresa} aperturas=${tasa.usados}/${limiteRpm} en 60s`);
+        res.set("Retry-After", "30");
+        return err(res, 503, "tasa_excedida", "Limite de llamadas nuevas por minuto alcanzado. Reintente en unos segundos.");
       }
     }
 

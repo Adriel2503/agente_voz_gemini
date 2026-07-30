@@ -1,5 +1,14 @@
 require("dotenv").config();
 
+// parseInt con default que RESPETA el 0 explicito. Con el `parseInt(...) || def`
+// que usa el resto del archivo, un 0 seteado a proposito en el env se pisa con el
+// default; para los flags donde 0 significa "desactivado" eso seria justo lo
+// contrario de lo pedido.
+const entero = (valor, porDefecto) => {
+  const n = parseInt(valor, 10);
+  return Number.isFinite(n) ? n : porDefecto;
+};
+
 const env = {
   port: parseInt(process.env.PORT, 10) || 3000,
   gemini: {
@@ -40,6 +49,19 @@ const env = {
     // Default 0 (opt-in): con off, goAway cierra la sesion como siempre.
     resumption: process.env.GEMINI_RESUMPTION === "1",
   },
+  // Maximo de sesiones nuevas por minuto que puede abrir CADA empresa. NO es un
+  // tope global del gateway: con 15, diez empresas pueden generar 150
+  // aperturas/min en total y ninguna se rechaza, porque cada una lleva su propio
+  // contador (ver docs/guardias-anti-runaway.md).
+  // Default 15 = 80% de la cuota con el prompt actual (~8.000 tokens sobre
+  // 150.000 TPM). OJO: la guardia queda ACTIVA sin configurar nada, y Credicash
+  // genera hoy ~16,1 aperturas/min en operacion normal, asi que a 15 se le
+  // rechaza ~7% de los intentos. Subir a 17 para no tocar su operacion, o bajar
+  // a 13 (69% de la cuota) para tener mas margen ante rafagas.
+  // 0 = desactivado (por eso `entero` y no `|| 15`: un 0 explicito debe valer).
+  // A futuro esto puede salir de empresa.max_rpm con fallback a este valor; el
+  // punto de resolucion es una sola linea en crearSesion.
+  maxRpmPorEmpresa: entero(process.env.MAX_RPM_POR_EMPRESA, 15),
   audioSampleRate: parseInt(process.env.AUDIO_SAMPLE_RATE, 10) || 8000,
   // Ventana de gracia tras el colgado del caller para que el agente alcance a
   // tipificar (tool tipificarLlamada) antes de cerrar la sesion y disparar el
