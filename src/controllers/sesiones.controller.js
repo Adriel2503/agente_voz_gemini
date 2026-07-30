@@ -210,14 +210,41 @@ async function crearSesion(req, res) {
       webhook: webhook ? { webhookUrl: webhook.webhook_url, webhookSecret: webhook.webhook_secret } : null,
     });
 
-    await apiVoz.upsertSesion(idEmpresa, {
-      session_id: registro.session_id,
-      id_plantilla: plantilla.id,
-      estado: "created",
-      codec,
-      metadata,
-      fecha_inicio: new Date().toISOString(),
-    });
+    // Ultimo await despues de la reserva del canal, y el unico que no tenia red:
+    // si fallaba, el registro que store.crear reservo arriba quedaba vivo
+    // ocupando un cupo hasta que purgarExpiradas lo barriera (hasta 45s de canal
+    // fantasma). Misma limpieza que el catch de crearLlamadaServerWs.
+    //
+    // Se ABORTA la sesion en vez de degradar (que es lo que se hace con el
+    // webhook, que si es secundario): la fila de creacion es la traza de la
+    // llamada, y el upsert de cierre no manda id_plantilla ni codec ni
+    // fecha_inicio, asi que degradar dejaria la fila naciendo al final y sin
+    // atribucion de campana. Abortar sale gratis del lado del motor: la sesion
+    // Live recien se abre cuando conecta el WSS, no hay nada remoto colgado.
+    try {
+      await apiVoz.upsertSesion(idEmpresa, {
+        session_id: registro.session_id,
+        id_plantilla: plantilla.id,
+        estado: "created",
+        codec,
+        metadata,
+        fecha_inicio: new Date().toISOString(),
+      });
+    } catch (e) {
+      store.eliminar(sessionId); // libera el cupo de canal reservado
+      logger.error(`[sesiones] upsert created fallo empresa=${idEmpresa}: ${e.message}`);
+      // 503 y no 500 a proposito: 500 le dice al integrador "es un bug, no
+      // reintentes"; 503 + Retry-After le dice "es transitorio, volve", que es
+      // lo que hace que un blip de BD se recupere solo. Si la BD esta caida de
+      // verdad, rebotan todas y la campana se frena sola — correcto: gastar
+      // telefonia y TPM para un resultado que no vamos a poder guardar es peor
+      // que no llamar. Se reusa agente_indisponible (el integrador ya lo maneja).
+      // NOTA: el cupo de TASA ya se consumio y no se devuelve; con la BD caida
+      // los reintentos queman RPM. Devolverlo abriria un agujero peor (doble
+      // devolucion) por un caso de borde.
+      res.set("Retry-After", "30");
+      return err(res, 503, "agente_indisponible", "No se pudo registrar la sesion. Reintente en unos segundos.");
+    }
 
     if (registro.webhook) {
       enviarWebhook(registro.webhook, "session.created", { session_id: registro.session_id, metadata, variables });

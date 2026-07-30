@@ -140,9 +140,14 @@ async function manejarConexion(asteriskWs, sesion) {
   // logs. Ver docs/keys-gemini-por-empresa.md ("Observabilidad para decidir").
   let cierreDetalle = null;
 
+  // OJO: NO tocar asteriskWs.isAlive aca. Que NOSOTROS escribamos no prueba que
+  // el cliente siga vivo: send() sobre un socket OPEN no falla porque el peer
+  // desaparecio, falla recien cuando TCP se entera (y si no llega FIN —red
+  // partida, host congelado, NAT que dropea— puede no enterarse nunca). Solo la
+  // evidencia ENTRANTE cuenta: pong y message, en index.js. Ver el mismo
+  // razonamiento en la bomba de bajada.
   const enviarAsterisk = (obj) => {
     if (asteriskWs.readyState === WebSocket.OPEN) {
-      asteriskWs.isAlive = true; // pumpear datos hacia el cliente = sigue viva
       asteriskWs.send(JSON.stringify(obj));
     }
   };
@@ -465,14 +470,18 @@ async function manejarConexion(asteriskWs, sesion) {
       // stream a 50fps (evita corte por idle del lado del integrador y mantiene
       // el timing). El silencio de relleno respeta 3 invariantes:
       //   - NO toca agenteHablando ni emite agent_started_speaking (turnos exactos).
-      //   - NO setea isAlive: si lo hiciera, un socket realmente muerto nunca
-      //     lo detectaria el heartbeat (index.js). El silencio es para el
-      //     heartbeat del integrador, no para el nuestro.
       //   - NO pasa por outQ ni toca ultimoAudioEn (no afecta debeColgar).
+      //
+      // NINGUNA de las dos ramas setea isAlive, ni la del audio real: un socket
+      // realmente muerto no lo detectaria nunca el heartbeat de index.js. La
+      // bajada corre a 50fps, asi que marcar vivo al escribir levantaba el flag
+      // cada 20ms y el chequeo de 25s no podia encontrarlo en false JAMAS: el
+      // detector quedaba apagado y un zombi retenia canal y TPM hasta
+      // MAX_CALL_SECONDS (300s) en vez de morir en ~50s. Lo que escribimos
+      // nosotros es para el heartbeat del integrador, no para el nuestro.
       const out = outQ.popFrame(frameBytes);
       if (asteriskWs.readyState === WebSocket.OPEN) {
         if (out) {
-          asteriskWs.isAlive = true;
           asteriskWs.send(esMulaw ? pcm16ToMuLaw(out) : out);
           framesWritten++;
         } else if (bajadaSilencio) {
