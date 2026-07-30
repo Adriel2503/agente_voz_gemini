@@ -59,10 +59,28 @@ server.on("upgrade", async (req, socket, head) => {
     }
 
     const sesion = store.obtener(sessionId);
-    if (!sesion || sesion.idEmpresa !== idEmpresa) {
-      socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
+    const motivo = store.motivoRechazoConexion(sesion, idEmpresa);
+    if (motivo) {
+      // Hasta ahora estos rechazos eran mudos: no habia forma de saber si el
+      // integrador estaba reconectando sesiones ya terminadas o duplicando WS.
+      // Esta linea es a la vez el fix y el sensor.
+      logger.warn(`[upgrade] RECHAZADO ${motivo} sesion=${sessionId} empresa=${idEmpresa}`);
+      // 404 para los dos casos que ya existian (no cambia nada de lo actual);
+      // 409 para los nuevos: la sesion existe, pero no admite conexion.
+      const http = motivo === "sesion_finalizada" || motivo === "sesion_ya_conectada"
+        ? "409 Conflict"
+        : "404 Not Found";
+      socket.write(`HTTP/1.1 ${http}\r\n\r\n`);
       return socket.destroy();
     }
+
+    // Reclamo SINCRONICO, antes de handleUpgrade: su callback corre despues, y
+    // `conectado` recien se marca dentro de manejarConexion. Sin esto, dos
+    // upgrades que resumen a la vez de su await a la BD pasarian los dos.
+    // Es un flag aparte de `conectado` a proposito: purgarExpiradas purga por
+    // !conectado, asi que si marcaramos conectado aca y el handshake fallara, la
+    // sesion no se purgaria nunca y retendria un cupo de canal para siempre.
+    store.actualizar(sessionId, { wsReclamado: true });
 
     wss.handleUpgrade(req, socket, head, (ws) => {
       ws._sesionId = sessionId;
