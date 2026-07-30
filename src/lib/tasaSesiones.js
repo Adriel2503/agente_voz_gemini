@@ -27,7 +27,10 @@ const aperturas = new Map();
 // sale del env y manana puede salir de empresa.max_rpm sin tocar este archivo
 // (ver docs/guardias-anti-runaway.md, decision D2).
 //
-// limite <= 0 = desactivado, misma semantica de escape que canal <= 0.
+// Un limite no positivo es config invalida, no una forma de configurar nada: se
+// deja pasar la sesion en vez de rechazarla. Ante una config rota conviene
+// quedarse sin guardia (el estado de ayer) antes que dejar a la empresa sin
+// atender llamadas.
 function admitir(idEmpresa, limite, ahora = Date.now()) {
   if (!(limite > 0)) return { ok: true, usados: 0, limite: 0 };
 

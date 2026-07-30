@@ -132,7 +132,6 @@ reintentar justo cuando la cuota está saturada.
 ### Parámetro: env ahora, BD después
 
 `MAX_RPM_POR_EMPRESA`, default **15** (80 % de la cuota con el prompt actual).
-`0` = desactivado, misma semántica de escape que `canal <= 0`.
 
 > **La guardia queda activa sin configurar nada.** Credicash genera hoy ~16,1
 > RPM en operación normal, así que con 15 se le rechaza **~7 % de los intentos**
@@ -140,9 +139,13 @@ reintentar justo cuando la cuota está saturada.
 > cambio de comportamiento en producción, no un cambio inerte. Para no tocar su
 > operación, 17; para más margen ante ráfagas, 13.
 
-El parseo usa un helper `entero()` en vez del `parseInt(...) || def` del resto
-del archivo, porque con `||` un `0` seteado a propósito en el env se pisaría con
-el default y **no habría forma de apagar la guardia**.
+El `0` **no tiene significado especial**: se descartó darle uno porque es
+ambiguo —se puede leer igual de bien como "apagá la guardia" o como "cero
+llamadas por minuto, rechazá todo"— y ninguna de las dos lecturas justifica el
+riesgo de que alguien acierte la equivocada. Es un valor que no hay que escribir.
+`admitir()` trata cualquier límite no positivo como config inválida y **deja
+pasar** la sesión: ante una config rota es preferible quedarse sin guardia (el
+estado de ayer) antes que dejar a la empresa sin atender llamadas.
 
 El día que una empresa necesite un valor propio, sale de una columna
 `empresa.max_rpm` nullable con fallback al env — el mismo patrón que el repo ya

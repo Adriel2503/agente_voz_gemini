@@ -45,11 +45,14 @@ test("rafaga a caballo del borde de minuto NO permite 2x el limite", () => {
   assert.strictEqual(tasa.usados(8, s(60)), 5, "siguen contando las 5 de la ventana");
 });
 
-test("limite 0 desactiva la guardia (y no acumula estado)", () => {
-  for (let i = 0; i < 50; i++) {
-    assert.strictEqual(tasa.admitir(8, 0, s(i)).ok, true);
+// Un limite no positivo es config invalida (el env nunca deberia producirla:
+// sin setear son 15). Debe FALLAR ABIERTO — dejar pasar — porque quedarse sin
+// guardia es preferible a dejar a la empresa sin atender llamadas.
+test("un limite invalido deja pasar y no acumula estado", () => {
+  for (const limiteRoto of [0, -5, NaN, undefined]) {
+    assert.strictEqual(tasa.admitir(8, limiteRoto, s(0)).ok, true, `limite=${limiteRoto}`);
   }
-  assert.strictEqual(tasa.usados(8, s(50)), 0, "con la guardia off no se registra nada");
+  assert.strictEqual(tasa.usados(8, s(1)), 0, "no registra nada");
 });
 
 // Verifica la decision D1 del diseno: el limite es POR EMPRESA, no global.
