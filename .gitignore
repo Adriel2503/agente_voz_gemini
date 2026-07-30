@@ -3,3 +3,13 @@ node_modules/
 .env.local
 *.log
 .DS_Store
+
+# Artefactos de rotacion de logs (winston-daily-rotate-file): se regeneran solos.
+logs/
+docs/logs/
+
+# Volcados de sesiones de terminal y notas de trabajo local. llamada.txt llego a
+# tener el contenido de un .env entero (DB_PASSWORD, GEMINI_API_KEY, JWT_SECRET,
+# tokens de WhatsApp/Ultravox/Anthropic): nunca debe entrar al repo.
+llamada.txt
+docs/*-this-session-is-being-continued-from-a-previous-c.txt

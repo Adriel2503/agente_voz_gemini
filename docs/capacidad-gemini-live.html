@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Capacidad Gemini Live — Incidente 16-jul-2026</title>
+<style>
+  :root{
+    --bg:#ffffff; --fg:#1a1d24; --muted:#5b6472; --card:#f6f8fa; --border:#e1e6ec;
+    --accent:#2563eb; --accent2:#7c3aed; --ok:#1e7e34; --ok-bg:#e9f6ee;
+    --req:#c0392b; --req-bg:#fdecea; --warn:#b7791f; --warn-bg:#fdf6e3;
+    --code-bg:#f0f3f6; --track:#e1e6ec;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1319; --fg:#e6eaf0; --muted:#9aa4b2; --card:#161b22; --border:#2b323c;
+      --accent:#6ea8fe; --accent2:#b18cf0; --ok:#6fcf97; --ok-bg:#1c3226;
+      --req:#ff6b6b; --req-bg:#3a1d1d; --warn:#e2b53d; --warn-bg:#33290f;
+      --code-bg:#1c2129; --track:#2b323c; }
+  }
+  :root[data-theme="dark"]{ --bg:#0f1319; --fg:#e6eaf0; --muted:#9aa4b2; --card:#161b22; --border:#2b323c;
+    --accent:#6ea8fe; --accent2:#b18cf0; --ok:#6fcf97; --ok-bg:#1c3226; --req:#ff6b6b; --req-bg:#3a1d1d;
+    --warn:#e2b53d; --warn-bg:#33290f; --code-bg:#1c2129; --track:#2b323c; }
+  :root[data-theme="light"]{ --bg:#ffffff; --fg:#1a1d24; --muted:#5b6472; --card:#f6f8fa; --border:#e1e6ec;
+    --accent:#2563eb; --accent2:#7c3aed; --ok:#1e7e34; --ok-bg:#e9f6ee; --req:#c0392b; --req-bg:#fdecea;
+    --warn:#b7791f; --warn-bg:#fdf6e3; --code-bg:#f0f3f6; --track:#e1e6ec; }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.6;font-size:15px}
+  .wrap{max-width:1040px;margin:0 auto;padding:36px 22px 90px}
+  h1{font-size:28px;margin:0 0 6px;letter-spacing:-.02em}
+  h2{font-size:21px;margin:48px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--border)}
+  h3{font-size:16px;margin:26px 0 8px}
+  h4{font-size:12px;margin:18px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  p{margin:9px 0}
+  .lede{color:var(--muted);font-size:16px;margin-bottom:4px}
+  .meta{font-size:12.5px;color:var(--muted)}
+  code{background:var(--code-bg);padding:2px 6px;border-radius:5px;font-family:"SF Mono",ui-monospace,Consolas,monospace;font-size:.88em}
+  pre{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:16px;overflow-x:auto;font-size:12.5px;line-height:1.5}
+  pre code{background:none;padding:0}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin:14px 0}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  .tblwrap{overflow-x:auto}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--border);vertical-align:middle}
+  th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em}
+  tr:last-child td{border-bottom:none}
+  .num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+  .p-ok{background:var(--ok-bg);color:var(--ok)}
+  .p-bad{background:var(--req-bg);color:var(--req)}
+  .p-warn{background:var(--warn-bg);color:var(--warn)}
+  .warn{background:var(--warn-bg);border-left:4px solid var(--warn);border-radius:6px;padding:12px 15px;margin:14px 0}
+  .info{background:var(--card);border-left:4px solid var(--accent);border-radius:6px;padding:12px 15px;margin:14px 0}
+  .bad{background:var(--req-bg);border-left:4px solid var(--req);border-radius:6px;padding:12px 15px;margin:14px 0}
+  .good{background:var(--ok-bg);border-left:4px solid var(--ok);border-radius:6px;padding:12px 15px;margin:14px 0}
+  ul,ol{margin:8px 0;padding-left:24px}
+  li{margin:5px 0}
+
+  /* KPIs */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:20px 0}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+  .kpi .v{font-size:26px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.2}
+  .kpi .l{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:3px}
+  .kpi.r .v{color:var(--req)} .kpi.g .v{color:var(--ok)} .kpi.w .v{color:var(--warn)}
+
+  /* barras */
+  .bar{position:relative;height:16px;background:var(--track);border-radius:4px;overflow:hidden;min-width:110px}
+  .bar > span{display:block;height:100%;border-radius:4px}
+  .bar .limit{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--fg);opacity:.55}
+  .b-ok{background:var(--ok)} .b-warn{background:var(--warn)} .b-bad{background:var(--req)}
+
+  /* timeline */
+  .tl{margin:16px 0;border-left:2px solid var(--border);padding-left:18px}
+  .tl .ev{position:relative;margin:0 0 14px}
+  .tl .ev::before{content:"";position:absolute;left:-24px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--accent);border:2px solid var(--bg)}
+  .tl .ev.bad::before{background:var(--req)} .tl .ev.ok::before{background:var(--ok)} .tl .ev.gap::before{background:var(--muted)}
+  .tl .ev{background:none;border:none;padding:0}
+  .tl .t{font-weight:700;font-variant-numeric:tabular-nums;font-size:13.5px}
+  .tl .d{font-size:13.5px;color:var(--muted)}
+
+  /* comparación 2 bloques */
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}
+  @media(max-width:720px){.two{grid-template-columns:1fr}}
+  .blk{border-radius:10px;border:1px solid var(--border);padding:16px 18px;background:var(--card)}
+  .blk.bad{border-left:4px solid var(--req)} .blk.ok{border-left:4px solid var(--ok)}
+  .blk h3{margin:0 0 2px;font-size:15px}
+  .blk .sub{font-size:12px;color:var(--muted);margin-bottom:12px}
+  .blk dl{display:grid;grid-template-columns:1fr auto;gap:5px 10px;margin:0;font-size:13.5px}
+  .blk dt{color:var(--muted)} .blk dd{margin:0;font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+
+  /* simulador */
+  .sim{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin:18px 0}
+  .ctrls{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}
+  .ctrl label{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:5px}
+  .ctrl label b{font-variant-numeric:tabular-nums;font-size:14.5px}
+  .ctrl input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+  .ctrl .hint{font-size:11px;color:var(--muted);margin-top:3px}
+  .out{margin-top:22px;padding-top:18px;border-top:1px solid var(--border)}
+  .outgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+  .o{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:12px 14px}
+  .o .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .o .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+  /* rango de RPM soportado */
+  .rangobox{background:var(--bg);border:2px solid var(--border);border-radius:12px;padding:18px;margin-bottom:18px}
+  .rangobox > .cap{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;text-align:center;display:block;margin-bottom:14px}
+  .band{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;
+    padding:11px 14px;border-radius:9px;margin-bottom:7px}
+  .band:last-child{margin-bottom:0}
+  .band .z{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+  .band .r{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em;text-align:center}
+  .band .e{font-size:12px;text-align:right;white-space:nowrap}
+  .band.ok{background:var(--ok-bg);color:var(--ok)}
+  .band.wr{background:var(--warn-bg);color:var(--warn)}
+  .band.bd{background:var(--req-bg);color:var(--req)}
+  @media(max-width:560px){.band{grid-template-columns:1fr;gap:3px;text-align:center}.band .r,.band .e{text-align:center}}
+  .actual{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;
+    border:1px dashed var(--border);border-radius:9px;padding:12px 15px;margin-bottom:16px;font-size:13.5px}
+  .actual .n{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .actual .fx{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .gauge{margin-top:16px}
+  .gauge .track{position:relative;height:30px;background:var(--track);border-radius:6px;overflow:hidden}
+  .gauge .fill{height:100%;transition:width .18s ease,background .18s ease}
+  .gauge .mark{position:absolute;top:0;bottom:0;width:2px;background:var(--fg);opacity:.6}
+  .gauge .mlabel{position:absolute;top:32px;font-size:10.5px;color:var(--muted);transform:translateX(-50%);white-space:nowrap}
+  .verdict{margin-top:30px;padding:13px 16px;border-radius:8px;font-weight:600;font-size:14.5px}
+  .scen{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 4px}
+  .scen button{font:inherit;font-size:12.5px;font-weight:600;padding:7px 13px;border-radius:20px;
+    border:1px solid var(--border);background:var(--bg);color:var(--fg);cursor:pointer;transition:.14s}
+  .scen button:hover{border-color:var(--accent);color:var(--accent)}
+  .scen button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .foot{margin-top:60px;padding-top:16px;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Capacidad de Gemini Live — Incidente del 16-jul-2026</h1>
+<p class="lede">Por qué se cayó el 61&nbsp;% de la campaña de Credicash, cuál es el techo real del sistema y cómo dimensionarlo.</p>
+<p class="meta">Documento técnico · 216 sesiones del 16-jul-2026 · empresa 8 (Credicash) · plantilla 139 · motor <code>gemini-3.1-flash-live-preview</code></p>
+
+<div class="kpis">
+  <div class="kpi r"><div class="v">61 %</div><div class="l">llamadas perdidas</div></div>
+  <div class="kpi r"><div class="v">336 %</div><div class="l">pico de consumo vs cuota</div></div>
+  <div class="kpi w"><div class="v">3 h 14 m</div><div class="l">servicio caído</div></div>
+  <div class="kpi g"><div class="v">18,75</div><div class="l">RPM máximo real</div></div>
+</div>
+
+<div class="bad">
+<b>Conclusión en una línea.</b> La campaña abrió hasta <b>63 llamadas por minuto</b> cuando el techo del sistema son <b>18,75</b>.
+Cada llamada cuesta ~8.000 tokens solo por abrirse, y la cuota es de 150.000 tokens por minuto. No fue una falla del agente:
+fue operar la campaña al triple de la capacidad contratada, sin ningún mecanismo que lo impidiera.
+</div>
+
+<h2>1 · Qué pasó ese día</h2>
+
+<div class="tl">
+  <div class="ev ok"><div class="t">09:32 – 11:00</div><div class="d">Arranque suave: 12 llamadas, 0 % de fallo, conversaciones de ~80 s. Todo normal.</div></div>
+  <div class="ev bad"><div class="t">11:43</div><div class="d">Arranca la tanda del mediodía. <b>17 sesiones abiertas en 10 segundos.</b> 40 llamadas en el minuto → 213 % de la cuota → 75 % fallan.</div></div>
+  <div class="ev bad"><div class="t">11:44</div><div class="d">50 llamadas → 267 % de la cuota → 84 % fallan. Las conversaciones bajan a 10 s de media.</div></div>
+  <div class="ev bad"><div class="t">11:45</div><div class="d"><b>63 llamadas → 336 % de la cuota → 87 % fallan.</b> Duración media: 3 segundos. Fondo del colapso.</div></div>
+  <div class="ev gap"><div class="t">11:46 – 15:51</div><div class="d"><b>Servicio caído 3 h 14 min.</b> Ni una sola llamada. La campaña se detuvo por completo.</div></div>
+  <div class="ev ok"><div class="t">15:52 – 15:55</div><div class="d">Se relanza con menos intensidad: 50 llamadas a 12,5/min → 67 % de la cuota → <b>solo 8 % de fallo</b>. Conversaciones de hasta 3 minutos.</div></div>
+</div>
+
+<div class="info">
+<b>Por qué este día es el caso de estudio ideal.</b> Las dos tandas duraron exactamente 4 minutos, con el mismo prompt,
+la misma API key y la misma infraestructura. La <b>única</b> variable que cambió fue la cantidad de llamadas nuevas por minuto.
+Es un experimento controlado que ocurrió solo.
+</div>
+
+<h2>2 · El modelo de capacidad</h2>
+
+<p>Gemini Live no se mide en RPM/RPD como una API REST clásica. Una llamada telefónica es <b>un único request de WebSocket que dura minutos</b>.
+Lo que limita es el <b>TPM</b> (tokens por minuto), y el consumo dominante no es el audio sino <b>el prompt del sistema, que se reenvía completo en cada llamada</b>.</p>
+
+<pre><code>Tokens por llamada (setup)  =  8.000    (prompt de plantilla 139 + tools + variables)
+Cuota disponible            = 150.000 tokens/minuto
+
+TECHO  =  150.000 / 8.000  =  18,75 llamadas nuevas por minuto</code></pre>
+
+<h3>El reparto real del consumo</h3>
+<p>Sobre las 216 llamadas del 16-jul (73 minutos de conversación en total):</p>
+
+<div class="tblwrap"><table>
+<tr><th>Concepto</th><th class="num">Tokens</th><th class="num">%</th><th style="width:38%"></th></tr>
+<tr><td><b>Setup del prompt</b> (se paga en cada llamada)</td><td class="num">1.728.000</td><td class="num">89 %</td>
+    <td><div class="bar"><span class="b-bad" style="width:89%"></span></div></td></tr>
+<tr><td>Audio de la conversación</td><td class="num">217.950</td><td class="num">11 %</td>
+    <td><div class="bar"><span class="b-ok" style="width:11%"></span></div></td></tr>
+</table></div>
+
+<div class="warn">
+<b>El 89 % de lo que le pagamos a Google ese día no fue conversación</b>, fue reenviar el mismo prompt una y otra vez.
+Una llamada de 3 segundos cuesta exactamente lo mismo que una de 5 minutos.
+<br><br>
+<b>104 de las 216 llamadas duraron menos de 5 segundos</b> — 832.000 tokens gastados en conversaciones que nunca existieron.
+</div>
+
+<h3>La ecuación que relaciona todo</h3>
+
+<p>Las cuatro variables del sistema —cuota, tamaño del prompt, duración de las llamadas y cantidad de
+operadores— se relacionan en una sola fórmula:</p>
+
+<pre><code>                60 × operadores × tokens_por_llamada
+   TOKENS/MIN = ─────────────────────────────────────
+                      duración_de_llamada
+
+   La operación es viable si   TOKENS/MIN  ≤  CUOTA</code></pre>
+
+<h4>El 16 de julio, aplicada a las dos tandas</h4>
+<div class="tblwrap"><table>
+<tr><th></th><th class="num">Operadores</th><th class="num">Tokens</th><th class="num">Duración</th><th class="num">Tokens/min</th><th class="num">vs cuota</th></tr>
+<tr style="background:var(--req-bg)"><td><b>Mediodía</b></td><td class="num">15</td><td class="num">8.000</td><td class="num"><b>14 s</b></td><td class="num"><b>514.286</b></td><td class="num"><b>343 %</b></td></tr>
+<tr style="background:var(--ok-bg)"><td><b>Tarde</b></td><td class="num">15</td><td class="num">8.000</td><td class="num"><b>56 s</b></td><td class="num"><b>128.571</b></td><td class="num"><b>86 %</b></td></tr>
+</table></div>
+
+<div class="warn">
+Mismos operadores, mismo prompt, misma cuota. <b>Lo único que cambió fue la duración: se dividió por 4,
+y el consumo se multiplicó por 4.</b> La duración está en el denominador, y eso es lo que hace que el sistema
+se desboque cuando las llamadas empiezan a caerse.
+</div>
+
+<h4>Despejando cada variable</h4>
+<p>La misma ecuación responde las cuatro preguntas de dimensionamiento:</p>
+
+<div class="tblwrap"><table>
+<tr><th>Lo que querés saber</th><th>Fórmula</th><th class="num">Con los valores de hoy</th></tr>
+<tr><td>Cuántos <b>operadores</b> puedo tener</td><td><code>cuota × duración / (60 × tokens)</code></td><td class="num">150.000 × 56 / 480.000 = <b>17,5</b></td></tr>
+<tr><td>Cuánto deben <b>durar</b> las llamadas</td><td><code>60 × operadores × tokens / cuota</code></td><td class="num">60 × 15 × 8.000 / 150.000 = <b>48 s</b></td></tr>
+<tr><td>Qué <b>prompt</b> me puedo permitir</td><td><code>cuota × duración / (60 × operadores)</code></td><td class="num">150.000 × 56 / 900 = <b>9.333 tok</b></td></tr>
+<tr><td>Qué <b>cuota</b> necesito</td><td><code>60 × operadores × tokens / duración</code></td><td class="num">60 × 15 × 8.000 / 56 = <b>128.571</b></td></tr>
+</table></div>
+
+<p class="meta">Los valores de hoy son el límite absoluto (100 % de la cuota). Para operar con margen hay que
+dimensionar al ~55 %, que es lo que hace el simulador de la sección 6.</p>
+
+<h3>Cómo un operador se convierte en llamadas por minuto</h3>
+
+<p>Cada operador trabaja <b>independiente del resto</b>: marca, habla, cuelga y vuelve a marcar. Si cada ciclo completo
+dura <b>D</b> segundos, ese operador solo lanza <code>60 / D</code> llamadas por minuto. El total es la suma de todos:</p>
+
+<pre><code>1 operador con llamadas de 10 s  →  60 / 10  =   6 llamadas por minuto
+10 operadores                    →  10 × 6   =  60 llamadas por minuto
+
+1 operador con llamadas de 60 s  →  60 / 60  =   1 llamada por minuto
+10 operadores                    →  10 × 1   =  10 llamadas por minuto</code></pre>
+
+<p>Es decir: <b>los mismos 10 operadores generan 60 RPM o 10 RPM según cuánto duren las llamadas.</b>
+Y como el techo son 18,75 RPM, el primer caso revienta la cuota y el segundo entra cómodo.</p>
+
+<p class="meta">Todas las duraciones de este documento son el <b>ciclo total</b> del operador (marcado + timbrado +
+setup + conversación). El overhead de ~10 s pone un piso físico: ni con llamadas muertas al instante el ciclo baja
+de ~13 s, así que el peor caso por operador es 60 / 13 ≈ <b>4,6 llamadas por minuto</b> — con 5 operadores eso ya
+son 23 RPM = 123 % de la cuota.</p>
+
+<div class="tblwrap"><table>
+<tr><th>Duración de llamada</th><th class="num">Por operador</th><th class="num">5 oper.</th><th class="num">10 oper.</th><th class="num">15 oper.</th></tr>
+<tr><td>10 s</td><td class="num">6,0</td><td class="num" style="color:var(--req)"><b>30,0</b></td><td class="num" style="color:var(--req)"><b>60,0</b></td><td class="num" style="color:var(--req)"><b>90,0</b></td></tr>
+<tr><td>20 s</td><td class="num">3,0</td><td class="num" style="color:var(--warn)">15,0</td><td class="num" style="color:var(--req)"><b>30,0</b></td><td class="num" style="color:var(--req)"><b>45,0</b></td></tr>
+<tr><td>30 s</td><td class="num">2,0</td><td class="num" style="color:var(--ok)">10,0</td><td class="num" style="color:var(--req)"><b>20,0</b></td><td class="num" style="color:var(--req)"><b>30,0</b></td></tr>
+<tr><td>45 s</td><td class="num">1,33</td><td class="num" style="color:var(--ok)">6,7</td><td class="num" style="color:var(--warn)">13,3</td><td class="num" style="color:var(--req)"><b>20,0</b></td></tr>
+<tr><td><b>56 s</b> <span class="meta">medido</span></td><td class="num">1,07</td><td class="num" style="color:var(--ok)">5,4</td><td class="num" style="color:var(--ok)">10,7</td><td class="num" style="color:var(--warn)">16,1</td></tr>
+<tr><td>90 s</td><td class="num">0,67</td><td class="num" style="color:var(--ok)">3,3</td><td class="num" style="color:var(--ok)">6,7</td><td class="num" style="color:var(--ok)">10,0</td></tr>
+</table></div>
+<p class="meta">En rojo, las combinaciones que superan el techo de 18,75 RPM. En ámbar, las que quedan entre el 70 % y el 100 % de la cuota.</p>
+
+<div class="bad">
+<b>Acá está el corazón del problema.</b> El operador no decide cuánto dura la llamada — la decide el cliente,
+y sobre todo la decide el fallo. Cuando Gemini empieza a rechazar sesiones las llamadas caen de 56 s a 3 s,
+el ciclo del operador se acorta 6 veces y <b>los mismos operadores pasan de generar 16 RPM a generar 60</b>.
+Nadie tocó ninguna configuración.
+</div>
+
+<h3>La cadena completa: de operadores a tokens</h3>
+<p>Lo que se decide en la operación son <b>operadores</b>. Lo que consume cuota son <b>tokens</b>. Entre medio hay tres pasos:</p>
+
+<pre><code>  OPERADORES        ×  60 / duración_total    →  RPM
+  RPM               ×  tokens por llamada     →  TOKENS/MIN
+  TOKENS/MIN        ÷  cuota (150.000)        →  % DE CUOTA</code></pre>
+
+<h4>Quién configura qué</h4>
+<div class="tblwrap"><table>
+<tr><th>Variable</th><th>Quién la configura</th><th>Dónde</th><th class="num">Valor el 16-jul</th></tr>
+<tr><td><b>Operadores</b></td><td>Target</td><td>Su Asterisk</td><td class="num">10 (reportado)</td></tr>
+<tr><td>Duración de llamada</td><td>Nadie — la decide el cliente… <b>y el fallo</b></td><td>—</td><td class="num">56 s sana · 3 s fallida</td></tr>
+<tr style="background:var(--warn-bg)"><td><b>Tope de seguridad (llamadas concurrentes)</b></td><td><b>Nosotros</b></td><td><code>empresa.canal</code> en la BD</td><td class="num"><b>15</b></td></tr>
+<tr><td>Tokens por llamada</td><td>Nosotros</td><td>Plantilla 139</td><td class="num">8.231</td></tr>
+<tr><td>Cuota TPM</td><td>Google · nosotros vía API keys</td><td>AI Studio</td><td class="num">150.000</td></tr>
+</table></div>
+
+<div class="info">
+<b>Operador = llamada concurrente.</b> Cada operador atiende una llamada a la vez, así que la concurrencia
+es simplemente la cantidad de operadores: con 5 operadores nunca hay más de 5 llamadas simultáneas. No hace falta
+un concepto de "canales" aparte. Lo único adicional es <code>empresa.canal</code> en nuestra base de datos:
+un <b>tope de seguridad</b> de llamadas simultáneas que le aceptamos a la empresa (Credicash: 15, Alfin: 3),
+que debería fijarse igual a la cantidad de operadores acordada.
+</div>
+
+<div class="tblwrap"><table>
+<tr><th>Paso</th><th>Fórmula</th><th>Ejemplo del 16-jul (tarde)</th><th>Quién lo controla</th></tr>
+<tr><td>Operadores → RPM</td><td><code>op × 60 / dur</code></td><td>15 × 60 / 56 = <b>16,1 RPM</b></td><td>Target + la duración real</td></tr>
+<tr><td>RPM → tokens/min</td><td><code>rpm × tokens</code></td><td>16,1 × 8.000 = <b>128.571</b></td><td>Nosotros (tamaño del prompt)</td></tr>
+<tr><td>Tokens → % cuota</td><td><code>tpm / cuota</code></td><td>128.571 / 150.000 = <b>86 %</b></td><td>Nosotros (API keys)</td></tr>
+</table></div>
+
+<div class="bad">
+<b>Y acá está el hallazgo más incómodo del análisis.</b> La concurrencia máxima que se midió el 16-jul fue de
+<b>16 sesiones simultáneas</b>. No fue casualidad: <b>nuestro tope era 15 y estaba funcionando</b>.
+<br><br>
+El tope hizo exactamente lo que tenía que hacer — y <b>no evitó nada</b>. Los 15 espacios se reciclaron
+<b>63 veces por minuto</b> porque las llamadas morían a los 3 segundos. Un tope de concurrencia no frena
+un desbocamiento de <i>tasa</i>.
+<br><br>
+<b>Peor todavía: ese tope ya no existe.</b> Se retiró el 19-jul a las 14:17 (commit <code>ba7e364</code>) al migrar
+a Gemini, con el razonamiento de que «Gemini limita por TPM, no por canales». El razonamiento era correcto,
+pero la conclusión dejó al sistema sin ninguna guardia. <b>Hoy estamos más expuestos que el 16 de julio.</b>
+</div>
+
+<h3>La fórmula operativa</h3>
+<pre><code>RPM = operadores × 60 / duración_total_de_llamada
+
+  donde duración_total = conversación + marcado + timbrado + setup (~10 s)</code></pre>
+
+<p>Con 15 operadores, esto define el estado del sistema:</p>
+
+<div class="tblwrap"><table>
+<tr><th>Duración total</th><th class="num">RPM</th><th class="num">Tokens/min</th><th class="num">% cuota</th><th style="width:26%"></th><th>Estado</th></tr>
+<tr><td>40 s</td><td class="num">22,5</td><td class="num">180.000</td><td class="num">120 %</td><td><div class="bar"><span class="b-bad" style="width:100%"></span></div></td><td><span class="pill p-bad">colapso</span></td></tr>
+<tr><td>45 s</td><td class="num">20,0</td><td class="num">160.000</td><td class="num">107 %</td><td><div class="bar"><span class="b-bad" style="width:100%"></span></div></td><td><span class="pill p-bad">colapso</span></td></tr>
+<tr style="background:var(--warn-bg)"><td><b>48 s</b></td><td class="num"><b>18,75</b></td><td class="num"><b>150.000</b></td><td class="num"><b>100 %</b></td><td><div class="bar"><span class="b-warn" style="width:100%"></span></div></td><td><span class="pill p-warn">TECHO EXACTO</span></td></tr>
+<tr><td>50 s</td><td class="num">18,0</td><td class="num">144.000</td><td class="num">96 %</td><td><div class="bar"><span class="b-warn" style="width:96%"></span></div></td><td><span class="pill p-warn">al filo</span></td></tr>
+<tr><td>56 s <span class="meta">← tanda de la tarde</span></td><td class="num">16,0</td><td class="num">128.000</td><td class="num">85 %</td><td><div class="bar"><span class="b-warn" style="width:85%"></span></div></td><td><span class="pill p-warn">al filo</span></td></tr>
+<tr><td>60 s</td><td class="num">15,0</td><td class="num">120.000</td><td class="num">80 %</td><td><div class="bar"><span class="b-warn" style="width:80%"></span></div></td><td><span class="pill p-warn">vigilar</span></td></tr>
+<tr style="background:var(--ok-bg)"><td><b>70 s</b></td><td class="num"><b>12,9</b></td><td class="num"><b>102.900</b></td><td class="num"><b>69 %</b></td><td><div class="bar"><span class="b-ok" style="width:69%"></span></div></td><td><span class="pill p-ok">OBJETIVO</span></td></tr>
+<tr><td>90 s</td><td class="num">10,0</td><td class="num">80.000</td><td class="num">53 %</td><td><div class="bar"><span class="b-ok" style="width:53%"></span></div></td><td><span class="pill p-ok">holgado</span></td></tr>
+</table></div>
+
+<div class="card">
+<h4>Reglas rápidas para cualquier cantidad de operadores</h4>
+<pre><code>duración mínima (techo absoluto)   = 3,2 s × operadores
+duración segura (objetivo 13 RPM)  = 4,6 s × operadores</code></pre>
+<p style="margin-bottom:0">Con 15 operadores: mínimo <b>48 s</b>, seguro <b>70 s</b>. Cuantos más operadores, <b>más largas</b> tienen que ser las llamadas.</p>
+</div>
+
+<h2>3 · Los dos bloques del 16-jul</h2>
+
+<div class="two">
+  <div class="blk bad">
+    <h3>Mediodía · 11:43 – 11:46</h3>
+    <div class="sub">Tanda de alta intensidad</div>
+    <dl>
+      <dt>Requests</dt><dd>154</dd>
+      <dt>Promedio por minuto</dt><dd>38,5 RPM</dd>
+      <dt>Tokens por minuto</dt><dd>308.000</dd>
+      <dt>% de la cuota</dt><dd style="color:var(--req)">205 %</dd>
+      <dt>Duración total implicada</dt><dd>~22 s</dd>
+      <dt>Fallidas por cuota</dt><dd style="color:var(--req)">128 (83 %)</dd>
+      <dt>Llamadas tipificadas</dt><dd style="color:var(--req)">27 (18 %)</dd>
+      <dt>Conversaciones &gt; 60 s</dt><dd style="color:var(--req)">0</dd>
+    </dl>
+  </div>
+  <div class="blk ok">
+    <h3>Tarde · 15:52 – 15:55</h3>
+    <div class="sub">Tanda de baja intensidad</div>
+    <dl>
+      <dt>Requests</dt><dd>50</dd>
+      <dt>Promedio por minuto</dt><dd>12,5 RPM</dd>
+      <dt>Tokens por minuto</dt><dd>100.000</dd>
+      <dt>% de la cuota</dt><dd style="color:var(--ok)">67 %</dd>
+      <dt>Duración total implicada</dt><dd>~56 s</dd>
+      <dt>Fallidas por cuota</dt><dd style="color:var(--ok)">4 (8 %)</dd>
+      <dt>Llamadas tipificadas</dt><dd style="color:var(--ok)">46 (92 %)</dd>
+      <dt>Conversaciones &gt; 60 s</dt><dd style="color:var(--ok)">6</dd>
+    </dl>
+  </div>
+</div>
+
+<div class="good">
+<b>Al 205 % de la cuota se pierde el 82 % del valor de la campaña. Al 67 %, se conserva el 92 %.</b>
+Mismo agente, mismo prompt, mismo día.
+</div>
+
+<h3>Evidencia minuto a minuto</h3>
+<div class="tblwrap"><table>
+<tr><th>Minuto</th><th class="num">Requests</th><th class="num">Tokens/min</th><th class="num">% cuota</th><th style="width:26%">vs límite</th><th class="num">Fallidas</th></tr>
+<tr><td>11:43</td><td class="num">40</td><td class="num">320.000</td><td class="num">213 %</td><td><div class="bar"><span class="b-bad" style="width:100%"></span><i class="limit" style="left:47%"></i></div></td><td class="num">30 (75 %)</td></tr>
+<tr><td>11:44</td><td class="num">50</td><td class="num">400.000</td><td class="num">267 %</td><td><div class="bar"><span class="b-bad" style="width:100%"></span><i class="limit" style="left:37%"></i></div></td><td class="num">42 (84 %)</td></tr>
+<tr><td>11:45</td><td class="num">63</td><td class="num">504.000</td><td class="num">336 %</td><td><div class="bar"><span class="b-bad" style="width:100%"></span><i class="limit" style="left:30%"></i></div></td><td class="num">55 (87 %)</td></tr>
+<tr><td>11:46</td><td class="num">1</td><td class="num">8.000</td><td class="num">5 %</td><td><div class="bar"><span class="b-ok" style="width:5%"></span></div></td><td class="num">1</td></tr>
+<tr><td colspan="6" style="text-align:center;color:var(--muted);font-size:12.5px;padding:12px">— 3 h 14 min sin servicio —</td></tr>
+<tr><td>15:52</td><td class="num">16</td><td class="num">128.000</td><td class="num">85 %</td><td><div class="bar"><span class="b-warn" style="width:85%"></span><i class="limit" style="left:100%"></i></div></td><td class="num">0</td></tr>
+<tr><td>15:53</td><td class="num">15</td><td class="num">120.000</td><td class="num">80 %</td><td><div class="bar"><span class="b-warn" style="width:80%"></span><i class="limit" style="left:100%"></i></div></td><td class="num">4 (27 %)</td></tr>
+<tr><td>15:54</td><td class="num">14</td><td class="num">112.000</td><td class="num">75 %</td><td><div class="bar"><span class="b-ok" style="width:75%"></span><i class="limit" style="left:100%"></i></div></td><td class="num">0</td></tr>
+<tr><td>15:55</td><td class="num">5</td><td class="num">40.000</td><td class="num">27 %</td><td><div class="bar"><span class="b-ok" style="width:27%"></span></div></td><td class="num">0</td></tr>
+</table></div>
+<p class="meta">La marca vertical señala dónde estaría el límite de 150.000 tokens/min en cada barra.</p>
+
+<div class="warn">
+<b>La cuota es ventana deslizante, no minuto de reloj.</b> El minuto 15:53 marcó solo 80 % y aun así tuvo 4 fallos:
+entre 15:52:15 y 15:53:15 entraron ~21 sesiones = 112 % de la cuota, aunque ningún minuto de reloj lo mostrara.
+Por eso el objetivo operativo debe ser <b>70 % del techo</b>, no 100 %.
+</div>
+
+<h2>4 · Los dos modos de falla</h2>
+
+<p>La base distingue perfectamente una llamada que el cliente cortó de una que Gemini rechazó:</p>
+
+<div class="tblwrap"><table>
+<tr><th></th><th>Cliente cuelga <code>hangup_caller</code></th><th>Gemini rechaza <code>gemini_close</code></th></tr>
+<tr><td>Duración mínima observada</td><td><b>5 s</b></td><td><b>0 s</b></td></tr>
+<tr><td>Llamadas de menos de 5 s</td><td>0 de 21</td><td><b>98 de 128</b></td></tr>
+<tr><td>Quedan tipificadas</td><td><b>21 de 21 (100 %)</b></td><td><b>1 de 128 (0,8 %)</b></td></tr>
+</table></div>
+
+<div class="bad">
+<b>Al mediodía, 128 personas contestaron el teléfono y no escucharon absolutamente nada.</b>
+No colgaron ellas: nunca llegamos a hablar. Y no quedó registro comercial de ninguna.
+</div>
+
+<h3>Y dentro del rechazo, dos etapas distintas</h3>
+<pre><code>11:43:13 → 11:43:23   gemini_close con duración 30, 31, 35, 36, 37, 41, 46 s
+                      → Gemini corta la sesión EN MEDIO de la conversación
+
+11:43:36 en adelante  gemini_close con duración 0, 0, 0, 0...
+                      → rechazo en el setup, la sesión ni siquiera abre</code></pre>
+
+<p>Primero se le corta la llamada al cliente que ya estaba hablando; recién después dejan de entrar las nuevas.
+Para el cliente el primer caso es <b>peor</b> que no ser llamado: atendió, empezó a conversar, y se le cortó a mitad de frase.</p>
+
+<h2>5 · Por qué colapsa en vez de degradar</h2>
+
+<p>Cuando una llamada es rechazada muere a los 3 segundos en vez de durar 52. Eso <b>libera al operador 49 segundos antes</b>,
+el marcador remarca de inmediato y pide otros 8.000 tokens. Es un lazo de realimentación positiva:</p>
+
+<pre><code>Gemini rechaza la sesión (RESOURCE_EXHAUSTED → WS 1011)
+   ↓
+la llamada muere a los 3 s (en vez de 52 s)
+   ↓
+el operador se libera 49 s antes y remarca
+   ↓
+otro setup de 8.000 tokens
+   ↓
+más TPM consumido  →  más rechazos  →  (vuelve al inicio)</code></pre>
+
+<h3>El sistema es biestable</h3>
+<p>Con 15 operadores fijos basta con que falle el <b>19 %</b> de las llamadas para cruzar el techo — y a partir de ahí no vuelve solo.
+Una llamada sana ocupa a su operador <b>56 s</b> en total (valor medido en la tanda de la tarde); una rechazada, solo <b>13 s</b>:</p>
+
+<div class="tblwrap"><table>
+<tr><th>% de fallo</th><th class="num">Duración total media</th><th class="num">RPM</th><th class="num">% cuota</th><th>Estado</th></tr>
+<tr><td>0 %</td><td class="num">56 s</td><td class="num">16,1</td><td class="num">86 %</td><td><span class="pill p-warn">al filo</span></td></tr>
+<tr><td>10 %</td><td class="num">52 s</td><td class="num">17,4</td><td class="num">93 %</td><td><span class="pill p-warn">al filo</span></td></tr>
+<tr style="background:var(--req-bg)"><td><b>19 %</b></td><td class="num"><b>48 s</b></td><td class="num"><b>18,8</b></td><td class="num"><b>100 %</b></td><td><span class="pill p-bad">punto de no retorno</span></td></tr>
+<tr><td>30 %</td><td class="num">43 s</td><td class="num">20,9</td><td class="num">111 %</td><td><span class="pill p-bad">runaway</span></td></tr>
+<tr><td>50 %</td><td class="num">35 s</td><td class="num">25,9</td><td class="num">138 %</td><td><span class="pill p-bad">runaway</span></td></tr>
+<tr><td>87 % <span class="meta">← 11:45, medido</span></td><td class="num">14 s</td><td class="num">63,0</td><td class="num">336 %</td><td><span class="pill p-bad">colapso total</span></td></tr>
+</table></div>
+
+<div class="bad" style="margin-top:14px">
+<b>Con 15 operadores la operación arranca ya al 86 % de la cuota.</b> No hay margen: un bache de 19 % —perfectamente
+normal en una campaña en frío— alcanza para cruzar el techo y disparar la espiral.
+</div>
+
+<p>Pasado el punto de no retorno la realidad es <b>peor</b> que el modelo: a las 11:45 hasta las llamadas que sobrevivían
+duraban 9 s en vez de 52, acelerando la espiral más allá de lo que predice la tabla. La espiral activa duró
+3 minutos (11:43 – 11:45:45) y terminó cuando el marcador dejó de lanzar llamadas; la campaña recién se
+relanzó a las 15:52.</p>
+
+<h3>Validación del modelo contra los datos reales</h3>
+<div class="tblwrap"><table>
+<tr><th>Hora</th><th class="num">Duración real</th><th class="num">RPM predicho</th><th class="num">RPM observado</th><th>Error</th></tr>
+<tr><td>15:52</td><td class="num">52 s</td><td class="num">14,5</td><td class="num">16</td><td><span class="pill p-ok">9 %</span></td></tr>
+<tr><td>11:43</td><td class="num">13 s</td><td class="num">39,1</td><td class="num">40</td><td><span class="pill p-ok">2 %</span></td></tr>
+<tr><td>11:44</td><td class="num">10 s</td><td class="num">45,0</td><td class="num">50</td><td><span class="pill p-ok">10 %</span></td></tr>
+<tr><td>11:45</td><td class="num">3 s</td><td class="num">69,2</td><td class="num">63</td><td><span class="pill p-ok">9 %</span></td></tr>
+</table></div>
+
+<h3>Dosis-respuesta dentro del propio día</h3>
+<p>Los 8 minutos de operación del 16-jul, ordenados por cuánto consumían respecto de la cuota:</p>
+
+<div class="tblwrap"><table>
+<tr><th>Minuto</th><th class="num">Consumo vs cuota</th><th class="num">Llamadas</th><th class="num">Fallidas</th><th class="num">% fallo</th><th style="width:30%"></th></tr>
+<tr><td>15:55</td><td class="num">27 %</td><td class="num">5</td><td class="num">0</td><td class="num">0 %</td><td><div class="bar"><span class="b-ok" style="width:1%"></span></div></td></tr>
+<tr><td>15:54</td><td class="num">75 %</td><td class="num">14</td><td class="num">0</td><td class="num">0 %</td><td><div class="bar"><span class="b-ok" style="width:1%"></span></div></td></tr>
+<tr><td>15:53</td><td class="num">80 %</td><td class="num">15</td><td class="num">4</td><td class="num">27 %</td><td><div class="bar"><span class="b-warn" style="width:27%"></span></div></td></tr>
+<tr><td>15:52</td><td class="num">85 %</td><td class="num">16</td><td class="num">0</td><td class="num">0 %</td><td><div class="bar"><span class="b-ok" style="width:1%"></span></div></td></tr>
+<tr style="background:var(--req-bg)"><td>11:43</td><td class="num"><b>213 %</b></td><td class="num">40</td><td class="num">30</td><td class="num"><b>75 %</b></td><td><div class="bar"><span class="b-bad" style="width:75%"></span></div></td></tr>
+<tr style="background:var(--req-bg)"><td>11:44</td><td class="num"><b>267 %</b></td><td class="num">50</td><td class="num">42</td><td class="num"><b>84 %</b></td><td><div class="bar"><span class="b-bad" style="width:84%"></span></div></td></tr>
+<tr style="background:var(--req-bg)"><td>11:45</td><td class="num"><b>336 %</b></td><td class="num">63</td><td class="num">55</td><td class="num"><b>87 %</b></td><td><div class="bar"><span class="b-bad" style="width:87%"></span></div></td></tr>
+</table></div>
+
+<p>La relación es monótona y sin excepciones: <b>todos los minutos por debajo del techo tuvieron 0-27 % de fallo;
+todos los que lo superaron, 75-87 %.</b> No hay ninguna otra variable en el día que explique el corte con esta limpieza.</p>
+
+<h3>Validación fina: simulación + reconstrucción segundo a segundo</h3>
+<p>Para verificar el modelo se corrieron dos análisis independientes: una <b>simulación de eventos discretos</b>
+(operadores independientes, ventana deslizante de 150K, espiral de rechazos con ciclo de 13 s) y una
+<b>reconstrucción segundo a segundo</b> del 16-jul desde la base de datos. Hallazgos:</p>
+
+<div class="tblwrap"><table>
+<tr><th style="width:34%">Hallazgo</th><th>Evidencia</th></tr>
+<tr><td><b>El gatillo fue un arranque en frío simultáneo</b></td><td>Las primeras 15 llamadas entraron en 8 segundos (11:43:13 – 11:43:20): 120.000 tokens metidos de golpe en la ventana deslizante — 80 % de la cuota quemada antes de que nadie hablara. La tarde arrancó escalonada y no pasó nada.</td></tr>
+<tr><td><b>La espiral es por reciclaje del operador, no por remarcar más rápido</b></td><td>Tras un rechazo, el gap de remarcado es <i>mayor</i> (mediana 8,9 s vs 5,0 s tras un cuelgue normal). Lo que acelera la máquina es que la llamada muerta a los 3 s devuelve al operador 40 s antes.</td></tr>
+<tr><td><b>La transición tiene timestamp</b></td><td>Hasta las 11:43:36 Gemini cortaba llamadas en curso (que llevaban 30-46 s hablando); desde ahí, rechazos en la puerta con 0 s. Desde las 11:45 no hubo ni un solo corte a mitad de conversación: todo moría en el setup.</td></tr>
+<tr><td><b>Acantilado en 17 operadores</b></td><td>Simulación con barrido de 3 a 20 operadores (ciclo 56 s): 0 % de rechazo hasta 16; rechazo sostenido desde 17 (teórico: 17,5). El caudal aceptado se clava en ~17,5 llamadas/min — cada operador extra solo suma rechazos, no llamadas cursadas.</td></tr>
+<tr><td><b>El tope <code>empresa.canal</code> sí protege — si es menor que los operadores</b></td><td>Simulado tope 9 con 15 operadores: 63 % de cuota, 0 % de rechazo, y ante un shock de ventana llena se recupera en 58 s. Costo: −27 % de llamadas cursadas. Un tope igual a los operadores no protege nada: nunca llega a actuar.</td></tr>
+<tr><td><b>Umbral de cuelgues rápidos</b></td><td>Con 15 operadores, los rechazos por ráfaga aparecen cuando ~10 % de los clientes corta a los 5 s; el cruce sostenido está en ~20 %. Con 30 % ya se rechaza la mitad de los intentos.</td></tr>
+<tr><td><b>La tarde corrió con ~12 operadores activos, no 15</b></td><td>La asignación de llamadas a slots de marcado (algoritmo greedy sobre los timestamps) da 16 slots al mediodía y 12 a la tarde — consistente con la reducción de operadores que hizo Target esa tarde. La concurrencia solo hizo meseta en 15 (el tope) al mediodía.</td></tr>
+</table></div>
+
+<div class="info">
+<b>Matiz sobre la biestabilidad.</b> En la simulación, el colapso solo es auto-sostenido si el intento rechazado
+también consume cuota — en ese caso el sistema queda atrapado al 100 % de rechazo indefinidamente ya desde
+5 operadores. Si el rechazo no consumiera tokens, el sistema se recuperaría solo en ~4 minutos al vaciarse la
+ventana. Los datos reales no permiten distinguir entre ambos, porque el marcador dejó de lanzar llamadas a las
+11:45:45: la espiral activa duró 3 minutos y las 3 horas siguientes fueron la campaña detenida, no el colapso
+sosteniéndose. En cualquiera de los dos casos la conclusión operativa es la misma: <b>lo único seguro es no
+entrar en la espiral</b>.
+</div>
+
+<h2>6 · Simulador de escenarios</h2>
+<p>Mové los controles para ver cómo cambia el consumo. Los botones cargan configuraciones reales y propuestas.</p>
+
+<div class="sim">
+  <div class="scen" id="scen"></div>
+
+  <div class="ctrls" style="margin-top:18px">
+    <div class="ctrl">
+      <label for="s-ope">Operadores <b id="v-ope">15</b></label>
+      <input type="range" id="s-ope" min="1" max="40" step="1" value="15">
+      <div class="hint">= llamadas concurrentes (cada operador atiende una a la vez)</div>
+    </div>
+    <div class="ctrl">
+      <label for="s-dur">Duración total por llamada <b id="v-dur">56 s</b></label>
+      <input type="range" id="s-dur" min="8" max="180" step="1" value="56">
+      <div class="hint">Conversación + marcado + timbrado + setup</div>
+    </div>
+    <div class="ctrl">
+      <label for="s-tok">Tokens por llamada <b id="v-tok">8.000</b></label>
+      <input type="range" id="s-tok" min="1000" max="16000" step="250" value="8000">
+      <div class="hint">Tamaño del prompt de sistema + tools</div>
+    </div>
+    <div class="ctrl">
+      <label for="s-cuo">Cuota TPM <b id="v-cuo">150.000</b></label>
+      <input type="range" id="s-cuo" min="50000" max="600000" step="10000" value="150000">
+      <div class="hint">Una API key adicional por empresa duplica este valor</div>
+    </div>
+  </div>
+
+  <div class="out">
+    <div class="rangobox" id="rangobox">
+      <span class="cap">Con esta configuración soportamos</span>
+      <div class="band ok">
+        <div class="z">✓ Seguro</div>
+        <div class="r" id="b-ok">0 – 10,3 RPM</div>
+        <div class="e" id="e-ok">hasta 6 operadores</div>
+      </div>
+      <div class="band wr">
+        <div class="z">⚠ Riesgo</div>
+        <div class="r" id="b-wr">10,3 – 18,8 RPM</div>
+        <div class="e" id="e-wr">7 – 11 operadores</div>
+      </div>
+      <div class="band bd">
+        <div class="z">⛔ Colapso</div>
+        <div class="r" id="b-bd">más de 18,8 RPM</div>
+        <div class="e" id="e-bd">12 operadores o más</div>
+      </div>
+      <p class="fx" style="text-align:center;font-size:11.5px;color:var(--muted);margin:12px 0 0" id="fx-max">
+        techo = 150.000 ÷ 8.000 tokens = 18,8 RPM</p>
+    </div>
+
+    <div class="actual" id="actual">
+      <div>
+        <b>Tu operación actual</b>
+        <div class="fx" id="fx-gen">15 operadores × 60 ÷ 56 s</div>
+      </div>
+      <div style="text-align:right">
+        <div class="n" id="o-rpm">16,1</div>
+        <div class="fx">RPM generados</div>
+      </div>
+    </div>
+
+    <div class="gauge">
+      <div class="track">
+        <div class="fill" id="g-fill" style="width:57%"></div>
+        <div class="mark" style="left:46.7%"></div>
+        <div class="mark" style="left:66.7%"></div>
+      </div>
+      <div style="position:relative;height:16px">
+        <div class="mlabel" style="left:46.7%">objetivo · 70 %</div>
+        <div class="mlabel" style="left:66.7%">techo · 100 %</div>
+      </div>
+    </div>
+
+    <div class="verdict" id="verdict"></div>
+
+    <h4 style="margin-top:24px">Detalle</h4>
+    <div class="outgrid">
+      <div class="o"><div class="v" id="o-tpm">128.571</div><div class="l">tokens / minuto</div></div>
+      <div class="o"><div class="v" id="o-pct">86 %</div><div class="l">de la cuota</div></div>
+      <div class="o"><div class="v" id="o-marg">+2,7</div><div class="l">margen RPM</div></div>
+      <div class="o"><div class="v" id="o-dmin">48 s</div><div class="l">duración mínima</div></div>
+      <div class="o"><div class="v" id="o-cmax">11</div><div class="l">operadores máximos</div></div>
+      <div class="o"><div class="v" id="o-tol">29 %</div><div class="l">fallo tolerado</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="info">
+<b>Por qué el RPM de la izquierda no cambia al mover el prompt o la cuota.</b> Son dos cosas distintas:
+el RPM que <b>generamos</b> lo decide la operación telefónica (operadores y duración de llamada) — achicar el prompt no hace
+que se llame a menos gente. Lo que cambia es el RPM que <b>soportamos</b>, o sea el techo de la derecha.
+La campaña es estable cuando el número de la izquierda queda por debajo del de la derecha, con margen.
+</div>
+
+<h2>7 · Escenarios y dimensionamiento</h2>
+
+<p>Todos los escenarios asumen la duración total medida de <b>56 s</b>,
+salvo donde se indique otra cosa.</p>
+
+<div class="tblwrap"><table>
+<tr><th>Escenario</th><th class="num">Oper.</th><th class="num">Duración</th><th class="num">Tokens</th><th class="num">RPM</th><th class="num">% cuota</th><th>Resultado</th></tr>
+<tr style="background:var(--req-bg)"><td><b>16-jul mediodía</b> <span class="meta">real</span></td><td class="num">15</td><td class="num">14 s</td><td class="num">8.000</td><td class="num">64,3</td><td class="num">343 %</td><td><span class="pill p-bad">87 % de fallo</span></td></tr>
+<tr><td><b>16-jul tarde</b> <span class="meta">real</span></td><td class="num">15</td><td class="num">56 s</td><td class="num">8.000</td><td class="num">16,1</td><td class="num">86 %</td><td><span class="pill p-warn">8 % de fallo</span></td></tr>
+<tr><td>Peor caso teórico</td><td class="num">15</td><td class="num">10 s</td><td class="num">8.000</td><td class="num">90,0</td><td class="num">480 %</td><td><span class="pill p-bad">inoperable</span></td></tr>
+<tr style="background:var(--ok-bg)"><td><b>Recomendado hoy</b> — bajar operadores</td><td class="num"><b>9</b></td><td class="num">56 s</td><td class="num">8.000</td><td class="num">9,6</td><td class="num">51 %</td><td><span class="pill p-ok">estable</span></td></tr>
+<tr style="background:var(--ok-bg)"><td><b>Prompt compactado a 4.000</b></td><td class="num"><b>15</b></td><td class="num">56 s</td><td class="num">4.000</td><td class="num">16,1</td><td class="num">43 %</td><td><span class="pill p-ok">estable</span></td></tr>
+<tr style="background:var(--ok-bg)"><td>Segunda API key (300.000 TPM)</td><td class="num"><b>22</b></td><td class="num">56 s</td><td class="num">8.000</td><td class="num">23,6</td><td class="num">63 %</td><td><span class="pill p-ok">estable</span></td></tr>
+</table></div>
+
+<p class="meta">La fila del mediodía muestra el valor del modelo (64,3 RPM / 343 %); lo medido en producción fue
+63,0 RPM y 336 %. La diferencia del 2 % está dentro del margen de error del modelo (ver validación en la sección 5).</p>
+
+<div class="good">
+<b>Con el prompt a la mitad, los mismos 15 operadores pasan de operar al 86 % de la cuota a operar al 43 %</b> —
+sin reducir la campaña y sin pagarle un centavo más a Google. Es la palanca de mayor impacto.
+</div>
+
+<h3>Cuántos operadores soportamos</h3>
+<p>Con el prompt actual de 8.000 tokens, cuota de 150.000 TPM, llamadas de 56 s (cada operador, una llamada a la vez):</p>
+
+<div class="tblwrap"><table>
+<tr><th class="num">Operadores</th><th class="num">RPM</th><th class="num">Tokens/min</th><th class="num">% cuota</th><th style="width:22%"></th><th class="num">Fallo tolerado</th><th>Estado</th></tr>
+<tr><td class="num">5</td><td class="num">5,4</td><td class="num">42.857</td><td class="num">29 %</td><td><div class="bar"><span class="b-ok" style="width:29%"></span></div></td><td class="num">93 %</td><td><span class="pill p-ok">muy holgado</span></td></tr>
+<tr><td class="num">6</td><td class="num">6,4</td><td class="num">51.429</td><td class="num">34 %</td><td><div class="bar"><span class="b-ok" style="width:34%"></span></div></td><td class="num">86 %</td><td><span class="pill p-ok">holgado</span></td></tr>
+<tr><td class="num">7</td><td class="num">7,5</td><td class="num">60.000</td><td class="num">40 %</td><td><div class="bar"><span class="b-ok" style="width:40%"></span></div></td><td class="num">78 %</td><td><span class="pill p-ok">holgado</span></td></tr>
+<tr><td class="num">8</td><td class="num">8,6</td><td class="num">68.571</td><td class="num">46 %</td><td><div class="bar"><span class="b-ok" style="width:46%"></span></div></td><td class="num">71 %</td><td><span class="pill p-ok">holgado</span></td></tr>
+<tr style="background:var(--ok-bg)"><td class="num"><b>9</b></td><td class="num"><b>9,6</b></td><td class="num"><b>77.143</b></td><td class="num"><b>51 %</b></td><td><div class="bar"><span class="b-ok" style="width:51%"></span></div></td><td class="num"><b>63 %</b></td><td><span class="pill p-ok">RECOMENDADO</span></td></tr>
+<tr><td class="num">10</td><td class="num">10,7</td><td class="num">85.714</td><td class="num">57 %</td><td><div class="bar"><span class="b-ok" style="width:57%"></span></div></td><td class="num">56 %</td><td><span class="pill p-ok">aceptable</span></td></tr>
+<tr><td class="num">11</td><td class="num">11,8</td><td class="num">94.286</td><td class="num">63 %</td><td><div class="bar"><span class="b-ok" style="width:63%"></span></div></td><td class="num">48 %</td><td><span class="pill p-ok">aceptable</span></td></tr>
+<tr><td class="num">12</td><td class="num">12,9</td><td class="num">102.857</td><td class="num">69 %</td><td><div class="bar"><span class="b-warn" style="width:69%"></span></div></td><td class="num">41 %</td><td><span class="pill p-warn">límite</span></td></tr>
+<tr style="background:var(--warn-bg)"><td class="num">15 <span class="meta">← 16-jul</span></td><td class="num">16,1</td><td class="num">128.571</td><td class="num">86 %</td><td><div class="bar"><span class="b-warn" style="width:86%"></span></div></td><td class="num">19 %</td><td><span class="pill p-warn">frágil</span></td></tr>
+<tr style="background:var(--req-bg)"><td class="num">18</td><td class="num">19,3</td><td class="num">154.286</td><td class="num">103 %</td><td><div class="bar"><span class="b-bad" style="width:100%"></span></div></td><td class="num">—</td><td><span class="pill p-bad">sobre el techo</span></td></tr>
+</table></div>
+
+<div class="good">
+<b>9 operadores es la configuración recomendada con el prompt actual.</b> Opera al 51 % de la cuota y aguanta
+un 63 % de fallo transitorio sin entrar en espiral. Hasta 11 sigue siendo aceptable; de 12 en adelante el margen
+se vuelve demasiado fino.
+</div>
+
+<h3>Por qué 9 y no 15: la tolerancia a fallos</h3>
+<p>La diferencia decisiva no es el consumo en régimen normal, sino <b>cuánto fallo aguanta antes de que se dispare la espiral</b>.
+Recordá que una llamada rechazada libera al operador a los 13 s en vez de 56, así que el mismo operador
+empieza a marcar cuatro veces más rápido:</p>
+
+<div class="tblwrap"><table>
+<tr><th class="num">Operadores</th><th class="num">% cuota normal</th><th class="num">Fallo tolerado</th><th style="width:30%"></th><th>Veredicto</th></tr>
+<tr style="background:var(--ok-bg)"><td class="num"><b>9</b></td><td class="num">51 %</td><td class="num"><b>63 %</b></td><td><div class="bar"><span class="b-ok" style="width:63%"></span></div></td><td><span class="pill p-ok">robusto</span></td></tr>
+<tr><td class="num">10</td><td class="num">57 %</td><td class="num">56 %</td><td><div class="bar"><span class="b-ok" style="width:56%"></span></div></td><td><span class="pill p-ok">aceptable</span></td></tr>
+<tr><td class="num">12</td><td class="num">69 %</td><td class="num">41 %</td><td><div class="bar"><span class="b-warn" style="width:41%"></span></div></td><td><span class="pill p-warn">límite</span></td></tr>
+<tr style="background:var(--req-bg)"><td class="num">15</td><td class="num">86 %</td><td class="num">19 %</td><td><div class="bar"><span class="b-bad" style="width:19%"></span></div></td><td><span class="pill p-bad">frágil</span></td></tr>
+</table></div>
+
+<div class="info">
+<b>Con 9 operadores tendría que fallar el 63 % de las llamadas para cruzar el techo; con 15 basta el 19 %.</b>
+Esa es toda la diferencia entre una operación que se recupera sola de un bache y una que se derrumba.
+El 16-jul se derrumbó porque estaba en el segundo grupo.
+</div>
+
+<h3>Cuadro de recomendación final</h3>
+<div class="tblwrap"><table>
+<tr><th>Si el prompt es…</th><th class="num">Techo RPM</th><th class="num">Operadores</th><th class="num">RPM generados</th><th class="num">% cuota</th><th class="num">Fallo tolerado</th></tr>
+<tr style="background:var(--ok-bg)"><td><b>8.000 tokens</b> <span class="meta">hoy</span></td><td class="num">18,75</td><td class="num"><b>9</b></td><td class="num">9,6</td><td class="num">51 %</td><td class="num">63 %</td></tr>
+<tr><td>6.000 tokens</td><td class="num">25,0</td><td class="num"><b>12</b></td><td class="num">12,9</td><td class="num">51 %</td><td class="num">63 %</td></tr>
+<tr><td>4.000 tokens</td><td class="num">37,5</td><td class="num"><b>18</b></td><td class="num">19,3</td><td class="num">51 %</td><td class="num">63 %</td></tr>
+</table></div>
+<p class="meta">En los tres casos se dimensiona para operar a ~51 % de la cuota, que es el punto donde el sistema
+tolera más del 60 % de fallo transitorio sin entrar en espiral. Achicar el prompt no cambia nada para el cliente:
+<b>permite duplicar la cantidad de operadores</b> con el mismo presupuesto de tokens.</p>
+
+
+<h2>8 · Resumen para decisión</h2>
+
+<div class="tblwrap"><table>
+<tr><th>Pregunta</th><th>Respuesta</th></tr>
+<tr><td>¿Cuál es nuestro techo real?</td><td><b>18,75 llamadas nuevas por minuto</b> con el prompt actual y 150.000 TPM.</td></tr>
+<tr><td>¿Cuántos operadores soportamos?</td><td><b>9</b> con llamadas de ~56 s (hasta 11 es aceptable). Con 15 se opera al 86 % de la cuota, sin margen.</td></tr>
+<tr><td>¿Qué pasó el 16-jul?</td><td>Se abrieron hasta 63 llamadas/min: <b>3,4 veces el techo</b>. Se perdió el 61 % del día.</td></tr>
+<tr><td>¿Fue una falla del agente?</td><td>No. En la tanda de la tarde el mismo agente sostuvo conversaciones de hasta 3 minutos con 92 % de tipificación.</td></tr>
+<tr><td>¿Se soluciona bajando operadores?</td><td>Solo parcialmente. Sin límite de tasa de apertura, el lazo de realimentación puede dispararse con cualquier configuración.</td></tr>
+<tr><td>¿Cuál es la medida de mayor impacto?</td><td>Reducir el prompt. De 8.000 a 4.000 tokens duplica la capacidad sin costo adicional.</td></tr>
+</table></div>
+
+<div class="foot">
+<p><b>Notas metodológicas.</b> El costo de 8.000 tokens por llamada es una estimación basada en el tamaño de la plantilla 139
+(8.231 tokens sobre 28.810 caracteres) más las declaraciones de tools y las variables inyectadas. El gateway
+<b>no captura hoy <code>usageMetadata</code></b> de Gemini, por lo que este valor no está medido directamente — instrumentarlo
+permitiría precisar el modelo. El overhead de ~10 s (marcado + timbrado + setup) se derivó empíricamente de los
+minutos saturados del 16-jul, donde resultó consistente entre 8 y 11,3 s. Los tiempos están en hora de Lima (UTC−5);
+la columna <code>fecha_inicio</code> se almacena en UTC sin zona horaria.</p>
+<p><b>Alcance de los datos.</b> Todas las cifras de este documento provienen exclusivamente de las
+<b>216 sesiones del 16-jul-2026</b> de Credicash (empresa 8) sobre motor Gemini. No se incluye tráfico de Ultravox,
+que fue el motor anterior y dejó de usarse el 12-jul-2026.</p>
+<p>Documento generado el 27-jul-2026.</p>
+</div>
+
+</div>
+
+<script>
+(function(){
+  var ESC = [
+    {n:"16-jul mediodía",  ope:15, dur:14, tok:8000, cuo:150000},
+    {n:"16-jul tarde",     ope:15, dur:56, tok:8000, cuo:150000},
+    {n:"Peor caso",        ope:15, dur:10, tok:8000, cuo:150000},
+    {n:"9 operadores ★",   ope:9,  dur:56, tok:8000, cuo:150000},
+    {n:"10 operadores",    ope:10, dur:56, tok:8000, cuo:150000},
+    {n:"Prompt a 4.000",   ope:15, dur:56, tok:4000, cuo:150000},
+    {n:"Doble cuota",      ope:22, dur:56, tok:8000, cuo:300000}
+  ];
+
+  var el = function(id){ return document.getElementById(id); };
+  var S = {ope:el('s-ope'), dur:el('s-dur'), tok:el('s-tok'), cuo:el('s-cuo')};
+  var fmt = function(n){ return n.toLocaleString('es-PE'); };
+
+  // botones de escenario
+  var cont = el('scen');
+  ESC.forEach(function(e, i){
+    var b = document.createElement('button');
+    b.textContent = e.n;
+    b.setAttribute('data-i', i);
+    b.addEventListener('click', function(){
+      S.ope.value = e.ope; S.dur.value = e.dur;
+      S.tok.value = e.tok; S.cuo.value = e.cuo;
+      calc();
+    });
+    cont.appendChild(b);
+  });
+
+  function calc(){
+    var ope = +S.ope.value,
+        dur = +S.dur.value, tok = +S.tok.value, cuo = +S.cuo.value;
+    var can = ope; // cada operador atiende una llamada a la vez
+
+    var rpm     = can * 60 / dur;
+    var tpm     = rpm * tok;
+    var pct     = tpm / cuo * 100;
+    var rpmMax  = cuo / tok;
+    var durMin  = can * 60 / rpmMax;
+    var canMax  = Math.floor(rpmMax * dur / 60);
+
+    el('v-ope').textContent = ope;
+    el('v-dur').textContent = dur + ' s';
+    el('v-tok').textContent = fmt(tok);
+    el('v-cuo').textContent = fmt(cuo);
+
+    // fallo transitorio que aguanta antes de cruzar el techo.
+    // Una llamada rechazada ocupa al operador ~13 s (3 s de sesion + 10 s de marcado).
+    var tol = (dur > 13 && durMin < dur) ? (dur - durMin) / (dur - 13) : 0;
+    tol = Math.max(0, Math.min(1, tol));
+
+    var dec = function(n){ return n.toFixed(1).replace('.', ','); };
+
+    // === SALIDA PRINCIPAL: que rango de RPM soporta esta configuracion ===
+    var rpmSafe = rpmMax * 0.55;                        // 55 % de la cuota
+    var opSafe  = Math.floor(rpmSafe * dur / 60); // operadores en zona segura
+    var opMax   = Math.floor(canMax);             // operadores hasta el techo
+
+    el('b-ok').textContent = '0 – ' + dec(rpmSafe) + ' RPM';
+    el('b-wr').textContent = dec(rpmSafe) + ' – ' + dec(rpmMax) + ' RPM';
+    el('b-bd').textContent = 'más de ' + dec(rpmMax) + ' RPM';
+
+    el('e-ok').textContent = opSafe >= 1 ? 'hasta ' + opSafe + (opSafe === 1 ? ' operador' : ' operadores')
+                                         : 'ningún operador entra';
+    el('e-wr').textContent = (opMax > opSafe) ? (opSafe + 1) + ' – ' + opMax + ' operadores' : '—';
+    el('e-bd').textContent = (opMax + 1) + ' operadores o más';
+
+    el('fx-max').textContent = 'techo = ' + fmt(cuo) + ' ÷ ' + fmt(tok) + ' tokens = ' + dec(rpmMax) + ' RPM';
+
+    el('o-rpm').textContent  = dec(rpm);
+    el('fx-gen').textContent = ope + ' operadores × 60 ÷ ' + dur + ' s';
+    el('o-tpm').textContent  = fmt(Math.round(tpm));
+    el('o-pct').textContent  = Math.round(pct) + ' %';
+    el('o-marg').textContent = (rpmMax >= rpm ? '+' : '−') + dec(Math.abs(rpmMax - rpm));
+    el('o-dmin').textContent = Math.round(durMin) + ' s';
+    el('o-cmax').textContent = opMax;
+    el('o-tol').textContent  = (pct > 100) ? '—' : Math.round(tol * 100) + ' %';
+
+    // gauge: 150% del ancho = 100% de cuota en 66,7%
+    var w = Math.min(100, pct / 150 * 100);
+    var fill = el('g-fill');
+    fill.style.width = w + '%';
+
+    var v = el('verdict'), col, cvar, txt;
+    if (pct > 100){
+      col = 'bad'; cvar = 'var(--req)';
+      txt = '⛔ COLAPSO — se generan ' + dec(rpm) + ' RPM contra un techo de ' + dec(rpmMax) +
+            '. Se consume ' + dec(pct/100) + ' veces la cuota. Para entrar, las llamadas deberían durar al menos ' +
+            Math.round(durMin) + ' s, o hay que bajar a ' + opMax + ' operadores.';
+    } else if (pct > 70){
+      col = 'warn'; cvar = 'var(--warn)';
+      txt = '⚠ AL FILO — ' + Math.round(pct) + ' % de la cuota. Entra, pero solo aguanta un ' + Math.round(tol*100) +
+            ' % de fallo transitorio antes de cruzar el techo y disparar el lazo de realimentación. ' +
+            'Para operar al 55 % conviene bajar a ' + opSafe + ' operadores.';
+    } else {
+      col = 'good'; cvar = 'var(--ok)';
+      txt = '✓ ESTABLE — ' + Math.round(pct) + ' % de la cuota. Aguanta hasta un ' + Math.round(tol*100) +
+            ' % de fallo transitorio sin entrar en espiral, y se podría escalar a ' + opMax +
+            ' operadores antes de tocar el techo.';
+    }
+    v.className = 'verdict ' + col;
+    v.textContent = txt;
+    fill.style.background = cvar;
+    el('actual').style.borderColor = cvar;
+    el('o-rpm').style.color = cvar;
+
+    // marcar escenario activo
+    Array.prototype.forEach.call(cont.children, function(b){
+      var e = ESC[+b.getAttribute('data-i')];
+      b.classList.toggle('on', e.ope===ope && e.dur===dur && e.tok===tok && e.cuo===cuo);
+    });
+  }
+
+  Object.keys(S).forEach(function(k){ S[k].addEventListener('input', calc); });
+  calc();
+})();
+</script>
+</body>
+</html>
